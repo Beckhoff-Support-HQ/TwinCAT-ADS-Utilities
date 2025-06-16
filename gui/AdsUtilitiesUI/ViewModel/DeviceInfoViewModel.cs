@@ -1,0 +1,556 @@
+﻿using AdsUtilities;
+using AdsUtilitiesUI.ViewModels;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Reflection.Metadata;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Input;
+using System.Xml.Linq;
+using TwinCAT.Ads;
+using System.Windows;
+
+namespace AdsUtilitiesUI;
+
+public class DeviceInfoViewModel : ViewModelTargetAccessPage
+{
+
+    public ObservableCollection<NetworkInterfaceInfo> NetworkInterfaces { get; set; }
+
+    public ObservableCollection<StaticRoutesInfo> RouteEntries { get; set; }
+
+    private SystemInfo _systemInfo;
+    public SystemInfo SystemInfo
+    {
+        get => _systemInfo;
+        set
+        {
+            _systemInfo = value;
+            OnPropertyChanged(nameof(SystemInfo));
+        }
+    }
+    
+    private readonly System.Timers.Timer _updateTimer;
+
+    private string _TcState;
+    public string TcState
+    {
+        get => _TcState;
+        set
+        {
+            _TcState = value;
+            OnPropertyChanged(nameof(TcState));
+        }
+    }
+
+    private RouterStatusInfo _routerStatusInfo;
+    public RouterStatusInfo RouterStatusInfo
+    {
+        get => _routerStatusInfo;
+        set
+        {
+            _routerStatusInfo = value;
+            OnPropertyChanged(nameof(RouterStatusInfo));
+        }
+    }
+
+    private DateTime _targetTime;
+
+    public DateTime TargetTime
+    {
+        get => _targetTime;
+        set
+        {
+            _targetTime = value;
+            OnPropertyChanged(nameof(TargetTime));
+            OnPropertyChanged(nameof(TargetTimeDisplay));
+        }
+    }
+
+    public string TargetTimeDisplay
+    {
+        get => TargetTime.ToString("yyyy/MM/dd-HH:mm");
+    }
+
+    private string _systemId;
+    public string SystemId
+    {
+        get => _systemId;
+        set
+        {
+            _systemId = value;
+            OnPropertyChanged(nameof(SystemId));
+        }
+    }
+
+    private uint _volumeNumber;
+    public uint VolumeNumber
+    {
+        get => _volumeNumber;
+        set
+        {
+            _volumeNumber = value;
+            OnPropertyChanged(nameof(VolumeNumber));
+        }
+    }
+
+    private short _platformLevel;
+    public short PlatformLevel
+    {
+        get => _platformLevel;
+        set
+        {
+            _platformLevel = value;
+            OnPropertyChanged(nameof(PlatformLevel));
+        }
+    }
+
+    private bool _netIdChangePending;
+    public bool NetIdChangePending
+    { 
+        get => _netIdChangePending;
+        set 
+        {
+            _netIdChangePending = value;
+            OnPropertyChanged(nameof(NetIdChangePending));
+        }
+    }
+
+    private string _netIdPending;
+    public string NetIdPending
+    {
+        get => _netIdPending;
+        set
+        {
+            _netIdPending = value;
+            NetIdChangePending = _netIdPending != Target.NetId;
+            OnPropertyChanged(nameof(NetIdPending));
+        }
+    }
+
+    public ICommand InstallRteDriverCommand { get; }
+
+    public ICommand SetTickCommand { get; }
+
+    public ICommand DeleteRouteEntryCommand { get; }
+
+    public ICommand SetNetIdAndRebootCommand { get; }
+
+    public ICommand SetNetIdCommand { get; }
+
+    public DeviceInfoViewModel(TargetService targetService, ILoggerService loggerService)
+    {
+        _TargetService = targetService;
+        InitTargetAccess(_TargetService);
+
+        _LoggerService = (LoggerService)loggerService;
+
+        _TargetService.OnTargetChanged += async (sender, args) => await UpdateDeviceInfo();
+
+        SystemInfo = new();
+
+        _updateTimer = new System.Timers.Timer(10_000);
+        _updateTimer.Elapsed += async (sender, e) => await UpdateLiveValues();
+        _updateTimer.AutoReset = true;
+        _updateTimer.Start();
+        
+        InstallRteDriverCommand = new AsyncRelayCommand(InstallRteDriver);
+        SetTickCommand = new AsyncRelayCommand(ExecuteSetTick);
+        DeleteRouteEntryCommand = new AsyncRelayCommand(DeleteRouteEntry);
+
+        SetNetIdAndRebootCommand = new AsyncRelayCommand(SetNetIdAndReboot);
+        SetNetIdCommand = new AsyncRelayCommand(SetNetId);
+
+
+        NetworkInterfaces = [];
+        RouteEntries = [];
+    }
+
+    public async Task UpdateDeviceInfo()
+    {
+        await Task.WhenAll(
+            LoadNetworkInterfacesAsync(),
+            LoadSystemInfoAsync(),
+            UpdateTcState(),
+            UpdateRouterUsage(),
+            UpdateTime(),
+            UpdateSystemId(),
+            UpdateVolumeNumber(),
+            UpdatePlatformLevel(),
+            ReloadRouteEntries()
+        );
+
+        _ = Task.Run(LoadLicensesAsync);
+        NetIdPending = Target.NetId;
+    }
+
+    private bool _isUpdating = false;
+
+    public async Task UpdateLiveValues()
+    {
+        if (_isUpdating) return;
+
+        _isUpdating = true;
+
+        try
+        {
+            await Task.WhenAll(UpdateTcState(), UpdateRouterUsage(), UpdateTime());
+        }
+        finally
+        {
+            _isUpdating = false;
+        }
+    }
+
+    public async Task LoadSystemInfoAsync(CancellationToken cancel = default)
+    {
+        try
+        {
+            using AdsSystemClient systemClient = new();
+            await systemClient.Connect(Target?.NetId);
+            SystemInfo = await systemClient.GetSystemInfoAsync(cancel);
+        }
+        catch (Exception ex) { }
+    }
+
+    public async Task UpdateTime(CancellationToken cancel = default)
+    {
+        try
+        {
+            using AdsSystemClient systemClient = new();
+            await systemClient.Connect(Target?.NetId);
+            TargetTime = await systemClient.GetSystemTimeAsync(cancel);
+        }
+        catch (Exception ex) { }
+    }
+
+    public async Task UpdateSystemId(CancellationToken cancel = default)
+    {
+        try
+        {
+            using AdsSystemClient systemClient = new();
+            await systemClient.Connect(Target?.NetId);
+            SystemId = await systemClient.GetSystemIdStringAsync(cancel);
+        }
+        catch (Exception ex) { }
+    }
+
+    public async Task UpdateVolumeNumber(CancellationToken cancel = default)
+    {
+        try
+        {
+            using AdsSystemClient systemClient = new();
+            await systemClient.Connect(Target?.NetId);
+            VolumeNumber = await systemClient.GetVolumeNumberAsync(cancel);
+        }
+        catch (Exception ex) { }
+    }
+
+    public async Task UpdatePlatformLevel(CancellationToken cancel = default)
+    {
+        try
+        {
+            using AdsSystemClient systemClient = new();
+            await systemClient.Connect(Target?.NetId);
+            PlatformLevel = await systemClient.GetPlatformLevelAsync(cancel);
+        }
+        catch (Exception ex) { }
+    }
+
+    public async Task UpdateTcState(CancellationToken cancel = default)
+    {
+        try
+        {
+            using AdsClient adsClient = new();
+            adsClient.Connect(Target?.NetId, 10_000);
+            ResultReadDeviceState state = await adsClient.ReadStateAsync(cancel);
+            TcState = state.State.AdsState.ToString();
+        }
+        catch (Exception ex) 
+        {
+            TcState = ex.Message;
+        }
+    }
+
+    public async Task UpdateRouterUsage(CancellationToken cancel = default)
+    {
+        try
+        {
+            using AdsSystemClient systemClient = new();
+            await systemClient.Connect(Target?.NetId);
+            var routerInfo = await systemClient.GetRouterStatusInfoAsync(cancel);
+            RouterStatusInfo = routerInfo;
+        }
+        catch (Exception ex) { }
+    }  
+
+    public async Task LoadNetworkInterfacesAsync(CancellationToken cancel = default)
+    {
+        try
+        {
+            using AdsRoutingClient routingClient = new();
+            await routingClient.Connect(Target?.NetId);
+            var interfaces = await routingClient.GetNetworkInterfacesAsync(cancel);
+
+            NetworkInterfaces.Clear();
+            foreach (var nic in interfaces)
+            {
+                NetworkInterfaces.Add(nic);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Error handling
+        }
+    }
+
+    private async Task InstallRteDriver(object networkInterface)
+    {
+        if (networkInterface is NetworkInterfaceInfo nic)
+        {
+            var rteInstallerPath = @"C:\TwinCAT\3.1\System\TcRteInstall.exe";   // ToDo: Get path and dir at runtime
+            var directory = @"C:\TwinCAT\3.1\System";
+
+            var installCommand = $"-r installnic \"{nic.Name}\"";
+
+            using AdsFileClient fileClient = new ();
+            await fileClient.Connect(Target?.NetId);
+            await fileClient.StartProcessAsync(rteInstallerPath, directory, installCommand);
+            return;
+        }
+        _LoggerService.LogError("Unexpected Error occured");
+    }
+
+    private async Task DeleteRouteEntry(object routeEntry)
+    {
+        // RTE drivers are preinstalled on WinCE, BSD and RTOS
+        if (!SystemInfo.OsName.Contains("Win") || SystemInfo.OsName.Contains("CE"))
+        {
+            _LoggerService.LogInfo("Drivers are preinstalled on the selected target");
+            return;
+        }
+
+        // There is no cli to install drivers remotely on TC2 systems
+        if (SystemInfo.TargetVersion.StartsWith("2."))
+        {
+            _LoggerService.LogWarning("Cannot install drivers on TC2 systems remotely");
+            return;
+        }
+
+        // ToDo: Check if driver is installed already
+
+        if (routeEntry is StaticRoutesInfo routeInfo)
+        {
+            using AdsRoutingClient routingClient = new();
+            await routingClient.Connect(Target?.NetId);
+            await routingClient.RemoveLocalRouteEntryAsync(routeInfo.Name);
+            await ReloadRouteEntries();
+            await _TargetService.Reload_Routes();           
+            return;
+        }
+    }
+
+    private async Task ReloadRouteEntries()
+    {
+        using AdsRoutingClient adsRoutingClient = new();
+        bool connected = await adsRoutingClient.Connect(Target?.NetId);
+
+        List<StaticRoutesInfo> routes = await adsRoutingClient.GetRoutesListAsync();
+
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            RouteEntries.Clear();
+
+            foreach (var route in routes)
+            {
+                RouteEntries.Add(route);
+            }
+        });
+    }
+
+
+    public class LicenseInfoViewModel
+    {
+        public string Name { get; set; }
+        public Guid Id { get; set; }
+        public string Used { get; set; }
+        public string Status { get; set; }
+        public uint VolumeNumber { get; set; }
+    }
+
+    public ObservableCollection<LicenseInfoViewModel> Licenses { get; } = new();
+
+    public async Task LoadLicensesAsync()
+    {
+        using AdsSystemClient systemClient = new();
+        await systemClient.Connect(Target.NetId);
+
+        var licenseList = await systemClient.GetOnlineLicensesAsync();
+
+        var licenseListFiltered = licenseList
+            .Where(lic => lic.State != LicenseState.ValidPending)
+            .ToList();
+
+        var nameTasks = licenseListFiltered.Select(async lic =>
+        {
+            try
+            {
+                // Timeout für jede Lizenzabfrage
+                var nameTask = systemClient.GetLicenseNameAsync(lic.LicenseId);
+                if (await Task.WhenAny(nameTask, Task.Delay(5_000)) == nameTask)
+                {
+                    return (lic, nameTask.Result);
+                }
+                else
+                {
+                    // Timeout
+                    return (lic, "Timeout");
+                }
+            }
+            catch (Exception)
+            {
+                return (lic, string.Empty);
+            }
+        }).ToArray();
+
+
+        var results = await Task.WhenAll(nameTasks);
+
+          
+        // UI-Thread for Collection-Update
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            Licenses.Clear();
+            foreach (var (lic, name) in results)
+            {
+                Licenses.Add(new LicenseInfoViewModel
+                {
+                    Name = name,
+                    Id = lic.LicenseId,
+                    Status = FormatLicenseState(lic.State, lic.ExpireTime),
+                    Used = FormatUsed(lic.Count, lic.Used),
+                    VolumeNumber = lic.VolumeNo
+                });
+            }
+        });
+
+        static string FormatUsed(uint count, uint used)
+        {
+            if (count == 0)
+                return string.Empty;
+            return $"{used} of {count}";
+        }
+
+        static string FormatLicenseState(LicenseState state, DateTime expiration)
+        {
+            return state switch
+            {
+                LicenseState.Valid => "Valid",
+                LicenseState.ValidTrial => $"Valid Trial, expires {expiration:MM/dd/yyyy}",
+                LicenseState.ValidPending => "Valid Pending",
+                LicenseState.ValidOem => "Valid OEM",
+                _ => "Unknown"
+            };
+        }
+    }
+
+    private async Task SetNetIdAndReboot()
+    {
+        using AdsSystemClient systemClient = new();
+        await systemClient.Connect(Target.NetId);
+        var systemInfo = await systemClient.GetSystemInfoAsync();
+        if (!systemInfo.OsName.Contains("Win") || systemInfo.OsName.Contains("CE"))
+        {
+            _LoggerService.LogError("Changing NetId Currently only supported for Big Windows");     // ToDO
+            return;
+        }
+
+        MessageBoxResult result = MessageBox.Show(
+            $"Edit NetId in local route entry for {Target.Name}?\nThe route must be re-added manually otherwise", 
+            "Edit route entry?", 
+            MessageBoxButton.YesNo, 
+            MessageBoxImage.Question);
+
+        bool editRouteEntry = result == MessageBoxResult.Yes;
+
+        using AdsRoutingClient routingClient = new();
+
+        await routingClient.Connect(Target?.NetId);
+
+        await routingClient.ChangeNetIdOnWindowsAsync(NetIdPending, true);
+
+        if(editRouteEntry)
+        {
+            using AdsRoutingClient localRoutingClient = new();
+
+            await localRoutingClient.Connect(AmsNetId.Local.ToString());
+
+            var routes = await localRoutingClient.GetRoutesListAsync();
+
+            var routeToEdit = routes.Where(r => r.NetId == Target.NetId && r.Name == Target.Name).First();
+
+            await localRoutingClient.RemoveLocalRouteEntryAsync(Target.NetId);
+
+            await localRoutingClient.AddLocalRouteEntryByIpAsync(NetIdPending, routeToEdit.IpAddress, routeToEdit.Name);
+
+        }
+    }
+
+    private async Task SetNetId()
+    {
+        using AdsSystemClient systemClient = new();
+        await systemClient.Connect(Target.NetId);
+        var systemInfo = await systemClient.GetSystemInfoAsync();
+        if (!systemInfo.OsName.Contains("Win") || systemInfo.OsName.Contains("CE"))
+        {
+            _LoggerService.LogError("Changing NetId Currently only supported for Big Windows");     // ToDo
+            return;
+        }
+
+        using AdsRoutingClient routingClient = new();
+
+        await routingClient.Connect(Target?.NetId);
+
+        await routingClient.ChangeNetIdOnWindowsAsync(NetIdPending, false);
+    }
+
+    private async Task ExecuteSetTick()
+    {
+        if (!SystemInfo.OsName.Contains("Win") || SystemInfo.OsName.Contains("CE"))
+        {
+            _LoggerService.LogInfo("No need to set tick on selected target");
+            return;
+        }
+
+        string path;
+        string dir;
+
+        // There is no cli to install drivers remotely on TC2 systems
+        if (SystemInfo.TargetVersion.StartsWith("2."))
+        {
+            path = @"C:\TwinCAT\Io\win8settick.bat";  
+            dir = @"C:\TwinCAT\Io";
+        }
+        else
+        {
+            path = @"C:\TwinCAT\3.1\System\win8settick.bat";
+            dir = @"C:\TwinCAT\3.1\System";
+        }
+
+        try
+        {
+            using AdsFileClient fileClient = new();
+            await fileClient.Connect(Target?.NetId);
+            await fileClient.StartProcessAsync(path, dir, string.Empty);
+        }
+        catch (Exception)
+        {
+            _LoggerService.LogError("Execution of win8settick.bat failed");
+            return;
+        }
+        _LoggerService.LogSuccess("Set tick successfully. Please reboot target");
+    }
+
+}
