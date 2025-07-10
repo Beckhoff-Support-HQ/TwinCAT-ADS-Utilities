@@ -53,6 +53,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         {
             _routerStatusInfo = value;
             OnPropertyChanged(nameof(RouterStatusInfo));
+            OnPropertyChanged(nameof(TargetRouterMemoryDisplay));
         }
     }
 
@@ -73,6 +74,10 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
     {
         get => TargetTime.ToString("yyyy/MM/dd-HH:mm");
     }
+
+    public string TargetRouterMemoryDisplay =>
+        $"{FormatBytes(RouterStatusInfo.RouterMemoryBytesAvailable)} available of {FormatBytes(RouterStatusInfo.RouterMemoryBytesReserved)}";
+
 
     private string _systemId;
     public string SystemId
@@ -304,6 +309,21 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         {
             // Error handling
         }
+    }
+    private string FormatBytes(long bytes)
+    {
+        const long KB = 1024;
+        const long MB = KB * 1024;
+        const long GB = MB * 1024;
+
+        if (bytes >= GB)
+            return $"{(bytes / (double)GB):0.##} GB";
+        if (bytes >= MB)
+            return $"{(bytes / (double)MB):0.##} MB";
+        if (bytes >= KB)
+            return $"{(bytes / (double)KB):0.##} KB";
+
+        return $"{bytes} B";
     }
 
     private async Task InstallRteDriver(object networkInterface)

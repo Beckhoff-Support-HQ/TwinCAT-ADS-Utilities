@@ -24,6 +24,11 @@ namespace AdsUtilitiesUI.Views.Pages
         {
             InitializeComponent();
         }
+        private void ApplyNetId_Click(object sender, RoutedEventArgs e)
+        {
+            NetIdChangeMenu.PlacementTarget = ApplyButton;
+            NetIdChangeMenu.IsOpen = true;
+        }
 
     }
 }

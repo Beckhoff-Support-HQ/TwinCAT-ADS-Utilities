@@ -36,15 +36,15 @@ using AdsFileClient sourceFileClient = new();
 await sourceFileClient.Connect();
 
 using AdsFileClient destinationFileClient = new();
-await destinationFileClient.Connect("192.168.1.100.1.1")
+await destinationFileClient.Connect("192.168.1.100.1.1");
 
-await sourceFileClient.FileCopyAsync(@"C:/temp/existingFile.txt", destinationFileClient, @"C:/temp/copiedFile.txt")
+await sourceFileClient.FileCopyAsync(@"C:/temp/existingFile.txt", destinationFileClient, @"C:/temp/copiedFile.txt");
 ```
 
 #### Perform a broadcast search
 ```csharp
 using AdsRoutingClient localRouting = new();
-await localRouting.Connect()
+await localRouting.Connect();
 
 // As List
 var devicesFound = await localRouting.AdsBroadcastSearchAsync(secondsTimeout: 5);

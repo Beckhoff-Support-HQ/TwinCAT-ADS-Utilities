@@ -155,15 +155,26 @@
                                              Padding="5"
                                              Width="Auto"/>
 
-                                    <Button Content="Apply and reboot now" 
-                                            Command="{Binding SetNetIdAndRebootCommand}"
+                                    <Button x:Name="ApplyButton"
+                                            Content="Apply" 
                                             IsEnabled="{Binding NetIdChangePending}"
-                                            Margin="5 0"/>
-
-                                    <Button Content="Apply with next reboot" 
-                                            Command="{Binding SetNetIdCommand}"
-                                            IsEnabled="{Binding NetIdChangePending}"
-                                            Margin="5 0"/>
+                                            Margin="5 0"
+                                            Click="ApplyNetId_Click">
+                                        <Button.ContextMenu>
+                                            <ContextMenu x:Name="NetIdChangeMenu">
+                                                <MenuItem Header="Apply and reboot now" Command="{Binding SetNetIdAndRebootCommand}">
+                                                    <MenuItem.Icon>
+                                                        <ContentControl Template="{StaticResource Icon_Power}" />
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
+                                                <MenuItem Header="Apply with next reboot" Command="{Binding SetNetIdCommand}">
+                                                    <MenuItem.Icon>
+                                                        <ContentControl Template="{StaticResource Icon_Restart}" />
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                    </Button>
                                 </StackPanel>
                                 
                             </Border>
@@ -197,14 +208,7 @@
                                 <TextBlock Text="Router memory:" Padding="5"/>
                             </Border>
                             <Border Grid.Row="6" Grid.Column="1" BorderBrush="LightGray" BorderThickness="0,0,0,1">
-                                <TextBlock Padding="5">
-                                    <TextBlock.Text>
-                                        <MultiBinding StringFormat="{}{0} available of {1}">
-                                            <Binding Path="RouterStatusInfo.RouterMemoryBytesAvailable" />
-                                            <Binding Path="RouterStatusInfo.RouterMemoryBytesReserved" />
-                                        </MultiBinding>
-                                    </TextBlock.Text>
-                                </TextBlock>
+                                <TextBlock Padding="5"  Text ="{Binding TargetRouterMemoryDisplay}"/>
                             </Border>
 
                             <!-- Row 8 - Ports -->

@@ -5,7 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Icon="/Images/icon.png"
-        Title="ADS Utilities" Height="675" Width="830">
+        Title="ADS Utilities" Height="700" Width="830"
+        ResizeMode="NoResize"
+        WindowStyle="SingleBorderWindow"
+        Background="WhiteSmoke">
     <Grid>
         <Grid.RowDefinitions>
             <!--Route Selection-->
