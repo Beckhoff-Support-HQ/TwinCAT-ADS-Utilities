@@ -6,76 +6,44 @@ using TwinCAT.Ads;
 
 namespace AdsUtilities;
 
-public class AdsFileClient : IDisposable
+public class AdsFileClient : AdsClientBase
 {
-    public string NetId { get { return _netId.ToString(); } }
-
-    private readonly AdsClient _adsClient = new();
-
-    private AmsNetId? _netId;
-
-    private ILogger? _logger;
-
-
-    public void ConfigureLogger(ILogger logger)
-    {
-        _logger = logger;
-    }
-
-    public AdsFileClient()
+    public AdsFileClient(ILoggerFactory? loggerFactory = null)
+        : base(loggerFactory)
     {
         
     }
-    
-    public async Task<bool> Connect(string netId, CancellationToken cancel = default)
-    {
-        _netId = new AmsNetId(netId);
-        _adsClient.Connect(_netId, AmsPort.SystemService);
-
-        var readState = await _adsClient.ReadStateAsync(cancel);
-
-        _adsClient.Disconnect();
- 
-        return readState.Succeeded;
-    }
-
-    public async Task<bool> Connect()
-    {
-        return await Connect(AmsNetId.Local.ToString());
-    }
 
     private async Task<uint> FileOpenAsync(
-        string path, 
+        string path,
         uint openFlags,
         CancellationToken cancel = default)
     {
         byte[] wrBfr = Encoding.ASCII.GetBytes(path + '\0');
-        
         byte[] rdBfr = new byte[sizeof(UInt32)];
-    
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
 
-        var rwResult = await _adsClient.ReadWriteAsync(
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
+
+        var rwResult = await adsConnection.ReadWriteAsync(
             (uint)AdsIndexGroups.SysServFOpen,
             openFlags,
             rdBfr,
             wrBfr,
             cancel);
 
-        _adsClient.Disconnect();
-
         if (rwResult.ErrorCode is AdsErrorCode.DeviceNotFound)
             _logger?.LogError("Could not open file '{filePath}' on {netId} because the file was not found.", path, NetId);
 
         rwResult.ThrowOnError();
 
-        return BitConverter.ToUInt32(rdBfr);   // Return file handle
+        return BitConverter.ToUInt32(rdBfr);
     }
 
     internal async Task<uint> FileOpenReadingAsync(
         string relativePath,
         AdsDirectory basePath = AdsDirectory.Generic,
-        bool binaryOpen = true, 
+        bool binaryOpen = true,
         CancellationToken cancel = default)
     {
         uint tmpOpenMode = (uint)AdsIndexOffsets.SysServFOpenReading | ((uint)basePath);
@@ -86,28 +54,27 @@ public class AdsFileClient : IDisposable
 
     private async Task<uint> FileOpenWritingAsync(
         string relativePath,
-        AdsDirectory basePath = AdsDirectory.Generic, 
-        bool binaryOpen = true, 
+        AdsDirectory basePath = AdsDirectory.Generic,
+        bool binaryOpen = true,
         CancellationToken cancel = default)
     {
         uint tmpOpenMode = (uint)AdsIndexOffsets.SysServFOpenWriting | ((uint)basePath);
-        if (binaryOpen) tmpOpenMode |= (uint)AdsIndexOffsets.SysServFOpenAsBinary;  
+        if (binaryOpen) tmpOpenMode |= (uint)AdsIndexOffsets.SysServFOpenAsBinary;
 
         return await FileOpenAsync(relativePath, tmpOpenMode, cancel);
     }
 
     private async Task FileCloseAsync(uint hFile, CancellationToken cancel = default)
     {
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync(
-            (uint)AdsIndexGroups.SysServFClose, 
-            hFile, 
-            Array.Empty<byte>(), 
-            Array.Empty<byte>(), 
+        await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServFClose,
+            hFile,
+            Array.Empty<byte>(),
+            Array.Empty<byte>(),
             cancel);
-
-        _adsClient.Disconnect();
     }
 
     private async Task<FileInfoByteMapped> GetFileInfoBytesAsync(
@@ -117,18 +84,17 @@ public class AdsFileClient : IDisposable
         uint hFile = await FileOpenReadingAsync(filePath, AdsDirectory.Generic, false, cancel);
 
         byte[] wrBfr = Encoding.UTF8.GetBytes(filePath);
-        byte[] rdBfr = new byte[Marshal.SizeOf(typeof(FileInfoByteMapped))];            // Allocate memory buffer the size of the byte stream returned by a file info request  
+        byte[] rdBfr = new byte[Marshal.SizeOf(typeof(FileInfoByteMapped))];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync( 
-            (uint)AdsIndexGroups.SysServFFind, 
-            hFile, 
-            rdBfr, 
-            wrBfr, 
+        await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServFFind,
+            hFile,
+            rdBfr,
+            wrBfr,
             cancel);
-
-        _adsClient.Disconnect();
 
         await FileCloseAsync(hFile, cancel);
 
@@ -137,28 +103,27 @@ public class AdsFileClient : IDisposable
 
     public async Task<byte[]> FileReadFullAsync(
         string filePath,
-        bool binaryOpen = true, 
+        bool binaryOpen = true,
         CancellationToken cancel = default)
     {
         long fileSize = (await GetFileInfoAsync(filePath, cancel)).fileSize;
-        byte[] rdBfr = new byte[fileSize];                                          // Read file size and allocate memory for the whole file --> use with caution
+        byte[] rdBfr = new byte[fileSize];
 
         uint hFile = await FileOpenReadingAsync(
             filePath,
             AdsDirectory.Generic,
-            binaryOpen, 
+            binaryOpen,
             cancel);
 
-        _adsClient.Connect((int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync(
-            (uint)AdsIndexGroups.SysServFRead, 
-            hFile, 
-            rdBfr, 
-            new byte[4], 
+        await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServFRead,
+            hFile,
+            rdBfr,
+            new byte[4],
             cancel);
-
-        _adsClient.Disconnect();
 
         await FileCloseAsync(hFile, cancel);
 
@@ -178,27 +143,26 @@ public class AdsFileClient : IDisposable
             binaryOpen,
             cancel);
 
-        _adsClient.Connect((int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync(
+        await adsConnection.ReadWriteAsync(
             (uint)AdsIndexGroups.SysServFRead,
             hFile,
             readBuffer,
             new byte[4],
             cancel);
 
-        _adsClient.Disconnect();
-
         await FileCloseAsync(hFile, cancel);
     }
 
     public async Task FileCopyAsync(
-        string pathSource, 
+        string pathSource,
         AdsFileClient destinationFileClient,
         string pathDestination,
-        bool binaryOpen = true, 
-        IProgress<double>? progress = null, 
-        uint chunkSizeKB = 100, 
+        bool binaryOpen = true,
+        IProgress<double>? progress = null,
+        uint chunkSizeKB = 100,
         CancellationToken cancel = default)
     {
         var fileInfo = await GetFileInfoAsync(pathSource, cancel);
@@ -207,29 +171,29 @@ public class AdsFileClient : IDisposable
         long bytesCopied = 0;
 
         uint hFileRead = await FileOpenReadingAsync(
-            pathSource, 
-            AdsDirectory.Generic,
-            binaryOpen, 
-            cancel);
-
-        uint hFileWrite = await destinationFileClient.FileOpenWritingAsync(
-            pathDestination, 
+            pathSource,
             AdsDirectory.Generic,
             binaryOpen,
             cancel);
-        
+
+        uint hFileWrite = await destinationFileClient.FileOpenWritingAsync(
+            pathDestination,
+            AdsDirectory.Generic,
+            binaryOpen,
+            cancel);
+
         while (true)
         {
             cancel.ThrowIfCancellationRequested();
 
             byte[] fileContentBuffer = await FileReadChunkAsync(
-                hFileRead, 
-                chunkSizeBytes, 
+                hFileRead,
+                chunkSizeBytes,
                 cancel);
 
             await destinationFileClient.FileWriteChunkAsync(
-                hFileWrite, 
-                fileContentBuffer, 
+                hFileWrite,
+                fileContentBuffer,
                 cancel);
 
             if (progress is not null)
@@ -239,47 +203,44 @@ public class AdsFileClient : IDisposable
                 progress.Report(progressPercentage);
             }
 
-            if (fileContentBuffer.Length == chunkSizeBytes)                     // not finished reading content from file
+            if (fileContentBuffer.Length == chunkSizeBytes)
                 continue;
             break;
         }
         await FileCloseAsync(hFileRead, cancel);
         await destinationFileClient.FileCloseAsync(hFileWrite, cancel);
-        
-        
     }
 
     public async Task FileCopyAsync(
-        string pathSource, 
-        string pathDestination, 
+        string pathSource,
+        string pathDestination,
         bool binaryOpen = true,
-        IProgress<double>? progress = null, 
-        uint chunkSizeBytes = 10_000, 
-        CancellationToken cancel = default) 
+        IProgress<double>? progress = null,
+        uint chunkSizeBytes = 10_000,
+        CancellationToken cancel = default)
         => await FileCopyAsync(
-            pathSource, 
-            this, 
-            pathDestination, 
-            binaryOpen, 
-            progress, 
-            chunkSizeBytes, 
+            pathSource,
+            this,
+            pathDestination,
+            binaryOpen,
+            progress,
+            chunkSizeBytes,
             cancel);
 
     private async Task FileWriteChunkAsync(
-        uint hFile, 
-        byte[] chunk, 
+        uint hFile,
+        byte[] chunk,
         CancellationToken cancel = default)
     {
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync(
-            (uint)AdsIndexGroups.SysServFWrite, 
-            hFile, 
-            new byte[4], 
-            chunk, 
+        await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServFWrite,
+            hFile,
+            new byte[4],
+            chunk,
             cancel);
-
-        _adsClient.Disconnect();
     }
 
     private async Task<byte[]> FileReadChunkAsync(
@@ -289,18 +250,17 @@ public class AdsFileClient : IDisposable
     {
         byte[] rdBfr = new byte[chunkSize];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var readWriteResult = await _adsClient.ReadWriteAsync(
-            (uint)AdsIndexGroups.SysServFRead, 
-            hFile, 
-            rdBfr, 
-            new byte[4], 
+        var readWriteResult = await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServFRead,
+            hFile,
+            rdBfr,
+            new byte[4],
             cancel);
 
-        _adsClient.Disconnect();
-
-        if(readWriteResult.ReadBytes < chunkSize)
+        if (readWriteResult.ReadBytes < chunkSize)
             return rdBfr.Take(readWriteResult.ReadBytes).ToArray();
 
         return rdBfr.ToArray();
@@ -310,25 +270,24 @@ public class AdsFileClient : IDisposable
         byte[] data,
         string relativeFilePath,
         AdsDirectory basePath = AdsDirectory.Generic,
-        bool binaryOpen = true, 
+        bool binaryOpen = true,
         CancellationToken cancel = default)
     {
         uint hFile = await FileOpenWritingAsync(
             relativeFilePath,
             basePath,
-            binaryOpen, 
+            binaryOpen,
             cancel);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync(
-            (uint)AdsIndexGroups.SysServFWrite, 
-            hFile, 
-            new byte[4], 
-            data, 
+        await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServFWrite,
+            hFile,
+            new byte[4],
+            data,
             cancel);
-
-        _adsClient.Disconnect();
 
         await FileCloseAsync(hFile, cancel);
     }
@@ -338,37 +297,35 @@ public class AdsFileClient : IDisposable
         AdsDirectory basePath = AdsDirectory.Generic,
         CancellationToken cancel = default)
     {
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync(
-            (uint)AdsIndexGroups.SysServFDelete, 
-            (uint)basePath, 
-            Array.Empty<byte>(), 
-            Encoding.UTF8.GetBytes(relativeFilePath), 
+        await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServFDelete,
+            (uint)basePath,
+            Array.Empty<byte>(),
+            Encoding.UTF8.GetBytes(relativeFilePath),
             cancel);
-
-        _adsClient.Disconnect();
     }
 
     public async Task RenameFileAsync(
-        string filePathCurrent, 
-        string filePathNew, 
+        string filePathCurrent,
+        string filePathNew,
         CancellationToken cancel = default)
     {
         WriteRequestHelper renameRequest = new WriteRequestHelper()
             .AddStringUTF8(filePathCurrent)
             .AddStringUTF8(filePathNew);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync(
-            (uint)AdsIndexGroups.SysServFRead, 
-            1 << 16, 
-            Array.Empty<byte>(), 
-            renameRequest.GetBytes(), 
+        await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServFRead,
+            1 << 16,
+            Array.Empty<byte>(),
+            renameRequest.GetBytes(),
             cancel);
-
-        _adsClient.Disconnect();
     }
 
     public async Task<FileInfoDetails> GetFileInfoAsync(
@@ -376,22 +333,20 @@ public class AdsFileClient : IDisposable
         CancellationToken cancel = default)
     {
         FileInfoByteMapped fileEntry = await GetFileInfoBytesAsync(filePath, cancel);
-
         return (FileInfoDetails)fileEntry;
     }
 
     public async Task CreateDirectoryAsync(string path, CancellationToken cancel = default)
     {
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        await _adsClient.ReadWriteAsync(
-            (uint)AdsIndexGroups.SysServMkDir, 
-            (uint)AdsIndexOffsets.SysServFOpenPathGeneric, 
-            Array.Empty<byte>(), 
-            Encoding.UTF8.GetBytes(path), 
+        await adsConnection.ReadWriteAsync(
+            (uint)AdsIndexGroups.SysServMkDir,
+            (uint)AdsIndexOffsets.SysServFOpenPathGeneric,
+            Array.Empty<byte>(),
+            Encoding.UTF8.GetBytes(path),
             cancel);
-
-        _adsClient.Disconnect();
     }
 
     public async Task<bool> FileExists(
@@ -407,64 +362,38 @@ public class AdsFileClient : IDisposable
                 true,
                 cancel);
 
-            if (hFile > 0)
-            {
-                return true;
-            }
+            return hFile > 0;
         }
-        catch { }
-        
-        return false;   
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "FileExists check failed for {filePath}", relativeFilePath);
+            return false;
+        }
     }
 
-
-    /*public async Task DeleteDirectoryAsync(string path, CancellationToken cancel = default,)
-    {
-        var directoryContent = await GetFolderContentListAsync(path, cancel);
-        
-        if (directoryContent.Any())
-        {
-            
-        }
-
-
-
-        _adsClient.Connect(_netId, (int)Constants.AdsPortSystemService);
-
-        await _adsClient.ReadWriteAsync(
-            Constants.AdsIGrpSysServRmDir, 
-            Constants.PathGeneric, 
-            Array.Empty<byte>(), 
-            Encoding.UTF8.GetBytes(path), 
-            cancel);
-
-        _adsClient.Disconnect();
-    }*/
-
     public async IAsyncEnumerable<FileInfoDetails> GetFolderContentStreamAsync(
-        string path, 
+        string path,
         [EnumeratorCancellation] CancellationToken cancel = default)
     {
         if (path.EndsWith("/") || path.EndsWith("\\"))
-            path += "*";    // Add wild-card character 
+            path += "*";
         else if (!path.EndsWith("*"))
-            path += "/*";    // Add wild-card character
+            path += "/*";
 
-        uint idxOffs = (uint)AdsIndexOffsets.SysServFOpenPathGeneric;   // for first file
-
-        byte[] nextFileBuffer = new WriteRequestHelper().AddStringUTF8(path).GetBytes();  // for first file
-
+        uint idxOffs = (uint)AdsIndexOffsets.SysServFOpenPathGeneric;
+        byte[] nextFileBuffer = new WriteRequestHelper().AddStringUTF8(path).GetBytes();
         byte[] fileInfoBuffer = new byte[Marshal.SizeOf(typeof(FileInfoByteMapped))];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
         while (true)
         {
             cancel.ThrowIfCancellationRequested();
 
-            Array.Clear(fileInfoBuffer, 0, fileInfoBuffer.Length);    // Clear buffer for next file
+            Array.Clear(fileInfoBuffer, 0, fileInfoBuffer.Length);
 
-            var rwResult = await _adsClient.ReadWriteAsync(
+            var rwResult = await adsConnection.ReadWriteAsync(
                 (uint)AdsIndexGroups.SysServFFind,
                 idxOffs,
                 fileInfoBuffer,
@@ -474,7 +403,7 @@ public class AdsFileClient : IDisposable
 
             if (rwResult.ErrorCode == AdsErrorCode.DeviceNotFound)
             {
-                yield break;    // Reached end of folder content
+                yield break;
             }
             else if (rwResult.ErrorCode != AdsErrorCode.NoError)
             {
@@ -490,7 +419,7 @@ public class AdsFileClient : IDisposable
             idxOffs = latestFile.hFile;
             nextFileBuffer = Array.Empty<byte>();
 
-            if (latestFileDetails.fileName is "." or "..")  // ignore current dir and parent dir
+            if (latestFileDetails.fileName is "." or "..")
                 continue;
 
             yield return latestFileDetails;
@@ -509,25 +438,10 @@ public class AdsFileClient : IDisposable
         return folderContent;
     }
 
-    public IEnumerable<FileInfoDetails> GetFolderContentStream(string path)
-    {
-        IAsyncEnumerator<FileInfoDetails> enumerator = GetFolderContentStreamAsync(path).GetAsyncEnumerator();
-
-        while (true)
-        {
-            var moveNextTask = Task.Run(() => enumerator.MoveNextAsync().AsTask());
-
-            if (!moveNextTask.Result)
-                yield break;
-
-            yield return enumerator.Current;
-        }
-    }
-
     public async Task StartProcessAsync(
         string applicationPath,
         string workingDirectory,
-        string commandLineParameters, 
+        string commandLineParameters,
         CancellationToken cancel = default)
     {
         WriteRequestHelper startProcessRequest = new WriteRequestHelper()
@@ -538,41 +452,28 @@ public class AdsFileClient : IDisposable
             .AddStringAscii(workingDirectory)
             .AddStringAscii(commandLineParameters);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var res = await _adsClient.WriteAsync(
-            (uint)AdsIndexGroups.SysServStartProcess, 
-            0, 
-            startProcessRequest.GetBytes(), 
+        var res = await adsConnection.WriteAsync(
+            (uint)AdsIndexGroups.SysServStartProcess,
+            0,
+            startProcessRequest.GetBytes(),
             cancel);
 
-        _adsClient.Disconnect();
-
-        res.ThrowOnError();   
+        res.ThrowOnError();
     }
 
     public void StartProcess(
-        string applicationPath, 
+        string applicationPath,
         string workingDirectory,
         string commandLineParameters)
     {
         StartProcessAsync(
-            applicationPath, 
-            workingDirectory, 
+            applicationPath,
+            workingDirectory,
             commandLineParameters)
             .GetAwaiter()
             .GetResult();
-    }
-
-    public void Dispose()
-    {
-        if (_adsClient.IsConnected)
-            _adsClient.Disconnect();
-
-        if (!_adsClient.IsDisposed)
-        {
-            _adsClient.Dispose();
-            GC.SuppressFinalize(this);
-        }
     }
 }

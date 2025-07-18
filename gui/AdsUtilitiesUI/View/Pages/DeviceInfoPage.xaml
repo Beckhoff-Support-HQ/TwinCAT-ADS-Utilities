@@ -159,6 +159,7 @@
                                             Content="Apply" 
                                             IsEnabled="{Binding NetIdChangePending}"
                                             Margin="5 0"
+                                            Padding="5 0"
                                             Click="ApplyNetId_Click">
                                         <Button.ContextMenu>
                                             <ContextMenu x:Name="NetIdChangeMenu">

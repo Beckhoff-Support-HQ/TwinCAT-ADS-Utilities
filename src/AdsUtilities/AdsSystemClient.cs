@@ -6,80 +6,43 @@ using TwinCAT.Ads;
 
 namespace AdsUtilities;
 
-public class AdsSystemClient : IDisposable
+public class AdsSystemClient : AdsClientBase
 {
-    public string NetId { get { return _netId.ToString(); } }
-
-    public bool IsConnected { get; private set; } = false;
-
-    private readonly AdsClient _adsClient = new();
-
-    private ILogger? _logger;
-
-    private AmsNetId? _netId;
-
-    public void ConfigureLogger(ILogger logger)
+    public AdsSystemClient(ILoggerFactory? loggerFactory = null)
+        : base(loggerFactory)
     {
-        _logger = logger;
-    }
 
-    public AdsSystemClient()
-    {
-        
-    }
-
-    public async Task<bool> Connect(string netId, CancellationToken cancel = default)
-    {
-        _netId = new AmsNetId(netId);
-        _adsClient.Connect(_netId, AmsPort.SystemService);
-
-        var readState = await _adsClient.ReadStateAsync(cancel);
-
-        _adsClient.Disconnect();
-
-        if (readState.Succeeded)
-        {
-            IsConnected = true;
-            return true;
-        }
-        return false;
-    }
-
-    public async Task<bool> Connect()
-    {
-        return await Connect(AmsNetId.Local.ToString());
     }
 
     public async Task RebootAsync(uint delaySeconds = 0, CancellationToken cancel = default) 
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var wcRes = await _adsClient.WriteControlAsync(
+        var wcRes = await adsConnection.WriteControlAsync(
             AdsState.Shutdown,
             1,
             BitConverter.GetBytes(delaySeconds),
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         wcRes.ThrowOnError();
     }
 
     public async Task ShutdownAsync(uint delaySeconds = 0, CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
-
-        var wcRes = await _adsClient.WriteControlAsync(
+        var wcRes = await adsConnection.WriteControlAsync(
             AdsState.Shutdown,
             0,
             BitConverter.GetBytes(delaySeconds),
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         wcRes.ThrowOnError();
     }
@@ -100,23 +63,22 @@ public class AdsSystemClient : IDisposable
         byte[] value, 
         CancellationToken cancel)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         WriteRequestHelper setRegRequest = new WriteRequestHelper()
             .AddStringUTF8(subKey)
             .AddStringUTF8(valueName)
             .Add(new byte[] { 0, (byte)registryTypeCode, 0, 0, 0 })
             .Add(value);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rwResult = await _adsClient.WriteAsync(
+        var rwResult = await adsConnection.WriteAsync(
             (uint)AdsIndexGroups.SysServRegHklm,
             0,
             setRegRequest.GetBytes(), 
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rwResult.ThrowOnError();
     }
@@ -127,24 +89,23 @@ public class AdsSystemClient : IDisposable
         uint byteSize, 
         CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         WriteRequestHelper readRegRequest = new WriteRequestHelper()
             .AddStringUTF8(subKey)
             .AddStringUTF8(valueName);
 
         byte[] readBuffer = new byte[byteSize];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rwResult = await _adsClient.ReadWriteAsync(
+        var rwResult = await adsConnection.ReadWriteAsync(
             (uint)AdsIndexGroups.SysServRegHklm,
             0, 
             readBuffer, 
             readRegRequest.GetBytes(), 
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rwResult.ThrowOnError();
         return readBuffer;
@@ -152,15 +113,14 @@ public class AdsSystemClient : IDisposable
 
     public async Task<SystemInfo> GetSystemInfoAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         byte[] rdBfr = new byte[2048];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rRes = await _adsClient.ReadAsync((uint)AdsIndexGroups.SysServTcSystemInfo,1, rdBfr, cancel);
+        var rRes = await adsConnection.ReadAsync((uint)AdsIndexGroups.SysServTcSystemInfo,1, rdBfr, cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rRes.ThrowOnError();
 
@@ -216,15 +176,14 @@ public class AdsSystemClient : IDisposable
 
     public async Task<DateTime> GetSystemTimeAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-        
-        byte[] rdBfr = new byte[16]; 
+        byte[] rdBfr = new byte[16];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rRes = await _adsClient.ReadAsync((uint)AdsIndexGroups.SysServTimeServices, 1,rdBfr, cancel);
+        var rRes = await adsConnection.ReadAsync((uint)AdsIndexGroups.SysServTimeServices, 1,rdBfr, cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rRes.ThrowOnError();
 
@@ -250,15 +209,14 @@ public class AdsSystemClient : IDisposable
 
     public async Task<List<CpuUsage>> GetTcCpuUsageAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         byte[] rdBfr = new byte[2400];                                              //Read buffer is sufficient for up to 100 CPU Cores (Increase size if needed)
 
-        _adsClient.Connect(_netId, (int)AdsPorts.R0RTime);
+        using var session = CreateSession((int)AdsPorts.R0RTime);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rRes = await _adsClient.ReadAsync(1, 15, rdBfr, cancel);                //ToDo: add idxGrp and idxOffs to constants
+        var rRes = await adsConnection.ReadAsync(1, 15, rdBfr, cancel);                //ToDo: add idxGrp and idxOffs to constants
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rRes.ThrowOnError();
 
@@ -282,13 +240,12 @@ public class AdsSystemClient : IDisposable
 
     public async Task<RouterStatusInfo> GetRouterStatusInfoAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         ReadRequestHelper readRequest = new(32);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.Router);
+        using var session = CreateSession((int)AdsPorts.Router);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rRes = await _adsClient.ReadAsync(1, 1, readRequest, cancel);
+        var rRes = await adsConnection.ReadAsync(1, 1, readRequest.Bytes, cancel);
 
         rRes.ThrowOnError();
 
@@ -328,13 +285,12 @@ public class AdsSystemClient : IDisposable
 
     public async Task<short> GetPlatformLevelAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
+        using var session = CreateSession((int)AdsPorts.LicenseServer);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        _adsClient.Connect(_netId, (int)AdsPorts.LicenseServer);
+        var rRes = await adsConnection.ReadAnyAsync<short>((uint)AdsIndexGroups.LicenseInfo, 0x2, cancel);
 
-        var rRes = await _adsClient.ReadAnyAsync<short>((uint)AdsIndexGroups.LicenseInfo, 0x2, cancel);
-
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rRes.ThrowOnError();
 
@@ -343,15 +299,14 @@ public class AdsSystemClient : IDisposable
 
     private async Task<byte[]> GetSystemIdBytesAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         byte[] rdBfr = new byte[16];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.LicenseServer);
+        using var session = CreateSession((int)AdsPorts.LicenseServer);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rRes = await _adsClient.ReadAsync((uint)AdsIndexGroups.LicenseInfo, 0x1, rdBfr, cancel);
+        var rRes = await adsConnection.ReadAsync((uint)AdsIndexGroups.LicenseInfo, 0x1, rdBfr, cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rRes.ThrowOnError();
 
@@ -372,13 +327,12 @@ public class AdsSystemClient : IDisposable
 
     public async Task<uint> GetVolumeNumberAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
+        using var session = CreateSession((int)AdsPorts.LicenseServer);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        _adsClient.Connect(_netId, (int)AdsPorts.LicenseServer);
+        var rRes = await adsConnection.ReadAnyAsync<uint>((uint)AdsIndexGroups.LicenseInfo, 0x5, cancel);
 
-        var rRes = await _adsClient.ReadAnyAsync<uint>((uint)AdsIndexGroups.LicenseInfo, 0x5, cancel);
-
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rRes.ThrowOnError();
 
@@ -387,12 +341,10 @@ public class AdsSystemClient : IDisposable
 
     public async Task<List<LicenseOnlineInfo>> GetOnlineLicensesAsync(CancellationToken cancel=default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
+        using var session = CreateSession((int)AdsPorts.LicenseServer);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        using AdsClient _adsClient = new();
-        _adsClient.Connect(_netId, (int)AdsPorts.LicenseServer);
-
-        var countResult = await _adsClient.ReadAnyAsync<uint>(0x01010006, 0, cancel);
+        var countResult = await adsConnection.ReadAnyAsync<uint>(0x01010006, 0, cancel);
         countResult.ThrowOnError();
 
         uint licenseCount = countResult.Value;
@@ -402,7 +354,7 @@ public class AdsSystemClient : IDisposable
         int structSize = Marshal.SizeOf<LicenseOnlineInfoMapped>();
         byte[] buffer = new byte[licenseCount * structSize];
 
-        var readResult = await _adsClient.ReadAsync(0x01010006, 0, buffer, cancel);
+        var readResult = await adsConnection.ReadAsync(0x01010006, 0, buffer, cancel);
         readResult.ThrowOnError();
 
         if (buffer.Length != readResult.ReadBytes)
@@ -414,38 +366,24 @@ public class AdsSystemClient : IDisposable
             LicenseOnlineInfo licenseInfo = (LicenseOnlineInfo)StructConverter.MarshalToStructure< LicenseOnlineInfoMapped>(buffer[(i * structSize)..((i+1)*structSize)]);
             licenses.Add(licenseInfo);
         }
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
         return licenses;
     }
 
     public async Task<string> GetLicenseNameAsync(Guid licenseId, CancellationToken cancel=default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
-        using AdsClient _adsClient = new();
-        _adsClient.Connect(_netId, (int)AdsPorts.LicenseServer);
+        using var session = CreateSession((int)AdsPorts.LicenseServer);
+        using var adsConnection = (AdsConnection)session.Connect();
 
         byte[] readBuffer = new byte[64];
         byte[] writeBuffer = licenseId.ToByteArray();
 
-        var result = await _adsClient.ReadWriteAsync(0x0101000C, 0, readBuffer, writeBuffer, cancel);
+        var result = await adsConnection.ReadWriteAsync(0x0101000C, 0, readBuffer, writeBuffer, cancel);
         result.ThrowOnError();
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         return Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
-    }
-
-
-    public void Dispose()
-    {
-        if (_adsClient.IsConnected)
-            _adsClient.Disconnect();
-        if (!_adsClient.IsDisposed)
-        {
-            _adsClient.Dispose();
-            GC.SuppressFinalize(this);
-        }
     }
 }
 

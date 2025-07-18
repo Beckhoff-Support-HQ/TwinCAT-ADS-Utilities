@@ -10,49 +10,21 @@ using TwinCAT.Ads;
 
 namespace AdsUtilities;
 
-public class AdsIoClient : IDisposable
+public class AdsIoClient : AdsClientBase
 {
-    public string NetId { get { return _netId.ToString(); } }
-
-    private readonly AdsClient _adsClient = new();
-
-    private AmsNetId? _netId;
-
-    private ILogger? _logger;
-
-    public void ConfigureLogger(ILogger logger)
+    public AdsIoClient(ILoggerFactory? loggerFactory = null)
+        : base(loggerFactory)
     {
-        _logger = logger;
-    }
 
-    public AdsIoClient()
-    {
-        
-    }
-
-    public async Task<bool> Connect(string netId, CancellationToken cancel = default)
-    {
-        _netId = new AmsNetId(netId);
-        _adsClient.Connect(_netId, AmsPort.SystemService);
-
-        var readState = await _adsClient.ReadStateAsync(cancel);
-
-        _adsClient.Disconnect();
-
-        return readState.Succeeded;
-    }
-
-    public async Task<bool> Connect()
-    {
-        return await Connect(AmsNetId.Local.ToString());
     }
 
     public async Task<IoDevice> GetIoDeviceInfoAsync(uint deviceId, CancellationToken cancel = default)
     {
-        _adsClient.Connect(_netId, (int)AdsPorts.R0Io);
+        using var session = CreateSession((int)AdsPorts.R0Io);
+        using var adsConnection = (AdsConnection)session.Connect();
 
         uint readLen = (
-            await _adsClient.ReadAnyAsync<uint>(
+            await adsConnection.ReadAnyAsync<uint>(
                 (uint)AdsIndexGroups.IoDeviceStateBase + deviceId,
                 (uint)AdsIndexOffsets.DeviceDataDeviceFullInfo,
                 cancel
@@ -61,13 +33,13 @@ public class AdsIoClient : IDisposable
 
         ReadRequestHelper readRequest = new((int)readLen);
 
-        await _adsClient.ReadAsync(
+        await adsConnection.ReadAsync(
             (uint)AdsIndexGroups.IoDeviceStateBase + deviceId,
             (uint)AdsIndexOffsets.DeviceDataDeviceFullInfo,
-            readRequest,
+            readRequest.Bytes,
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         // Get Master info
         uint dataLen = readRequest.ExtractUint32();
@@ -108,17 +80,18 @@ public class AdsIoClient : IDisposable
 
     public async Task<List<IoDevice>> GetIoDevicesAsync(CancellationToken cancel = default)
     {
+        using var session = CreateSession((int)AdsPorts.R0Io);
+        using var adsConnection = (AdsConnection)session.Connect();
+
         ReadRequestHelper readRequest = new(402);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.R0Io);
-
-        await _adsClient.ReadAsync(
+        await adsConnection.ReadAsync(
             (uint)AdsIndexGroups.IoDeviceStateBase,
             (uint)AdsIndexOffsets.DeviceDataDeviceId,
-            readRequest, 
+            readRequest.Bytes, 
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         uint numberOfIoDevices = readRequest.ExtractUint16();
         List<IoDevice> ioDevices = new();
@@ -133,49 +106,37 @@ public class AdsIoClient : IDisposable
     }
 
     public T ReadCoeData<T>(
-        string netId, 
         int ecSlaveAddress, 
         ushort index, 
         ushort subIndex)
     {
-        _adsClient.Connect(netId, ecSlaveAddress);
+        using var session = CreateSession(ecSlaveAddress);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        T value = (T)_adsClient.ReadAny(
+        T value = (T)adsConnection.ReadAny(
             (uint)AdsIndexGroups.Coe, 
             ((uint)index << 16) | subIndex, 
             typeof(T));
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         return value;
     }
 
     public void WriteCoeData(
-        string netId, 
         int ecSlaveAddress, 
         ushort index, 
         ushort subIndex, 
         object value)
     {
-        _adsClient.Connect(netId, ecSlaveAddress);
+        using var session = CreateSession(ecSlaveAddress);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        _adsClient.WriteAny(
+        adsConnection.WriteAny(
             (uint)AdsIndexGroups.Coe, 
             ((uint)index << 16) | subIndex, 
             value);
 
-        _adsClient.Disconnect();
-    }
-
-    public void Dispose()
-    {
-        if (_adsClient.IsConnected)
-            _adsClient.Disconnect();
-
-        if (!_adsClient.IsDisposed)
-        {
-            _adsClient.Dispose();
-            GC.SuppressFinalize(this);
-        }
+        adsConnection.Disconnect();
     }
 }

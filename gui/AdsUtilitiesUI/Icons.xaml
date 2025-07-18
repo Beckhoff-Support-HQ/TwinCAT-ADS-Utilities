@@ -37,6 +37,13 @@
             </Canvas>
         </Viewbox>
     </ControlTemplate>
+    <ControlTemplate x:Key="Icon_Run" TargetType="Control">
+        <Viewbox>
+            <Canvas Width="512" Height="512">
+                <Path Fill="#1E7C1E" Data="M128,0 L512,256 L128,512 Z" />
+            </Canvas>
+        </Viewbox>
+    </ControlTemplate>
     <ControlTemplate x:Key="Icon_Rename">
         <Viewbox>
             <Canvas Width="512" Height="512">

@@ -111,7 +111,7 @@ public class TargetService : INotifyPropertyChanged
 
     public async Task<List<StaticRouteStatus>> LoadAllRoutesAsync(string netId)
     {
-        using AdsRoutingClient adsRoutingClient = new();
+        AdsRoutingClient adsRoutingClient = new();
         bool connected = await adsRoutingClient.Connect(netId);
         if (!connected)
         {
@@ -132,7 +132,7 @@ public class TargetService : INotifyPropertyChanged
                 string deviceType = string.Empty;
                 if (isOnline)
                 {
-                    using AdsSystemClient systemClient = new();
+                    AdsSystemClient systemClient = new();
                     await systemClient.Connect(route.NetId);
                     var deviceInfo = await systemClient.GetSystemInfoAsync();
                     deviceType = deviceInfo.HardwareModel;

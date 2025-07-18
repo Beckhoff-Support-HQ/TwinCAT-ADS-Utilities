@@ -47,6 +47,21 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
+                <MenuItem Header="Run" Click="Run_Click" >
+                    <MenuItem.Icon>
+                        <ContentControl Template="{StaticResource Icon_Run}" />
+                    </MenuItem.Icon>
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsExecutable}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
             </ContextMenu>
             <Style TargetType="{x:Type TreeViewItem}">
                 <EventSetter Event="Expanded" Handler="TreeViewItem_Expanded"/>

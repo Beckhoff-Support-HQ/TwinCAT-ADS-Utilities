@@ -11,11 +11,15 @@ using System.Windows.Input;
 using System.Xml.Linq;
 using TwinCAT.Ads;
 using System.Windows;
+using Microsoft.Extensions.Logging;
 
 namespace AdsUtilitiesUI;
 
 public class DeviceInfoViewModel : ViewModelTargetAccessPage
 {
+    private ILogger _logger;
+
+    private ILoggerFactory _LoggerFactory;
 
     public ObservableCollection<NetworkInterfaceInfo> NetworkInterfaces { get; set; }
 
@@ -145,12 +149,13 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
     public ICommand SetNetIdCommand { get; }
 
-    public DeviceInfoViewModel(TargetService targetService, ILoggerService loggerService)
+    public DeviceInfoViewModel(TargetService targetService, ILoggerFactory loggerFactory)
     {
         _TargetService = targetService;
         InitTargetAccess(_TargetService);
 
-        _LoggerService = (LoggerService)loggerService;
+        _LoggerFactory = loggerFactory;
+        _logger = _LoggerFactory.CreateLogger<DeviceInfoViewModel>();
 
         _TargetService.OnTargetChanged += async (sender, args) => await UpdateDeviceInfo();
 
@@ -213,62 +218,81 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
     {
         try
         {
-            using AdsSystemClient systemClient = new();
+            AdsSystemClient systemClient = new(_LoggerFactory);
             await systemClient.Connect(Target?.NetId);
             SystemInfo = await systemClient.GetSystemInfoAsync(cancel);
         }
-        catch (Exception ex) { }
+        catch (Exception ex) 
+        {
+            _logger.LogError(ex, "Failed to load system info for target {NetId}", Target?.NetId);
+        }
     }
 
     public async Task UpdateTime(CancellationToken cancel = default)
     {
         try
         {
-            using AdsSystemClient systemClient = new();
+            AdsSystemClient systemClient = new(_LoggerFactory);
             await systemClient.Connect(Target?.NetId);
             TargetTime = await systemClient.GetSystemTimeAsync(cancel);
         }
-        catch (Exception ex) { }
+        catch (Exception ex) 
+        {
+            _logger.LogError(ex, "Failed to update target time for {NetId}", Target?.NetId);
+            TargetTime = DateTime.MinValue; 
+        }
     }
 
     public async Task UpdateSystemId(CancellationToken cancel = default)
     {
         try
         {
-            using AdsSystemClient systemClient = new();
+            AdsSystemClient systemClient = new(_LoggerFactory);
             await systemClient.Connect(Target?.NetId);
             SystemId = await systemClient.GetSystemIdStringAsync(cancel);
         }
-        catch (Exception ex) { }
+        catch (Exception ex) 
+        {
+            _logger.LogError(ex, "Failed to update system ID for target {NetId}", Target?.NetId);
+            SystemId = string.Empty;  // Set to empty if failed
+        }
     }
 
     public async Task UpdateVolumeNumber(CancellationToken cancel = default)
     {
         try
         {
-            using AdsSystemClient systemClient = new();
+            AdsSystemClient systemClient = new(_LoggerFactory);
             await systemClient.Connect(Target?.NetId);
             VolumeNumber = await systemClient.GetVolumeNumberAsync(cancel);
         }
-        catch (Exception ex) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update volume number for target {NetId}", Target?.NetId);
+            VolumeNumber = 0;  // Set to 0 if failed
+        }
     }
 
     public async Task UpdatePlatformLevel(CancellationToken cancel = default)
     {
         try
         {
-            using AdsSystemClient systemClient = new();
+            AdsSystemClient systemClient = new(_LoggerFactory);
             await systemClient.Connect(Target?.NetId);
             PlatformLevel = await systemClient.GetPlatformLevelAsync(cancel);
         }
-        catch (Exception ex) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update platform level for target {NetId}", Target?.NetId);
+            PlatformLevel = 0;  // Set to 0 if failed
+        }
     }
 
     public async Task UpdateTcState(CancellationToken cancel = default)
     {
         try
         {
-            using AdsClient adsClient = new();
+            using AdsClient adsClient = new(default, _LoggerFactory.CreateLogger<AdsClient>());
             adsClient.Connect(Target?.NetId, 10_000);
             ResultReadDeviceState state = await adsClient.ReadStateAsync(cancel);
             TcState = state.State.AdsState.ToString();
@@ -283,19 +307,27 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
     {
         try
         {
-            using AdsSystemClient systemClient = new();
+            AdsSystemClient systemClient = new(_LoggerFactory);
             await systemClient.Connect(Target?.NetId);
             var routerInfo = await systemClient.GetRouterStatusInfoAsync(cancel);
             RouterStatusInfo = routerInfo;
         }
-        catch (Exception ex) { }
+        catch (Exception ex) 
+        {
+            _logger.LogError(ex, "Failed to update router usage for target {NetId}", Target?.NetId);
+            RouterStatusInfo = new RouterStatusInfo
+            {
+                RouterMemoryBytesAvailable = 0,
+                RouterMemoryBytesReserved = 0
+            };  // Set to default if failed
+        }
     }  
 
     public async Task LoadNetworkInterfacesAsync(CancellationToken cancel = default)
     {
         try
         {
-            using AdsRoutingClient routingClient = new();
+            AdsRoutingClient routingClient = new(_LoggerFactory);
             await routingClient.Connect(Target?.NetId);
             var interfaces = await routingClient.GetNetworkInterfacesAsync(cancel);
 
@@ -307,7 +339,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         }
         catch (Exception ex)
         {
-            // Error handling
+            _logger.LogError(ex, "Failed to load network interfaces for target {NetId}", Target?.NetId);
         }
     }
     private string FormatBytes(long bytes)
@@ -335,12 +367,12 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
             var installCommand = $"-r installnic \"{nic.Name}\"";
 
-            using AdsFileClient fileClient = new ();
+            AdsFileClient fileClient = new (_LoggerFactory);
             await fileClient.Connect(Target?.NetId);
             await fileClient.StartProcessAsync(rteInstallerPath, directory, installCommand);
             return;
         }
-        _LoggerService.LogError("Unexpected Error occured");
+        _logger.LogError("Unexpected Error occured");
     }
 
     private async Task DeleteRouteEntry(object routeEntry)
@@ -348,14 +380,14 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         // RTE drivers are preinstalled on WinCE, BSD and RTOS
         if (!SystemInfo.OsName.Contains("Win") || SystemInfo.OsName.Contains("CE"))
         {
-            _LoggerService.LogInfo("Drivers are preinstalled on the selected target");
+            _logger.LogInformation("Drivers are preinstalled on the selected target");
             return;
         }
 
         // There is no cli to install drivers remotely on TC2 systems
         if (SystemInfo.TargetVersion.StartsWith("2."))
         {
-            _LoggerService.LogWarning("Cannot install drivers on TC2 systems remotely");
+            _logger.LogWarning("Cannot install drivers on TC2 systems remotely");
             return;
         }
 
@@ -363,7 +395,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
         if (routeEntry is StaticRoutesInfo routeInfo)
         {
-            using AdsRoutingClient routingClient = new();
+            AdsRoutingClient routingClient = new(_LoggerFactory);
             await routingClient.Connect(Target?.NetId);
             await routingClient.RemoveLocalRouteEntryAsync(routeInfo.Name);
             await ReloadRouteEntries();
@@ -374,7 +406,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
     private async Task ReloadRouteEntries()
     {
-        using AdsRoutingClient adsRoutingClient = new();
+        AdsRoutingClient adsRoutingClient = new(_LoggerFactory);
         bool connected = await adsRoutingClient.Connect(Target?.NetId);
 
         List<StaticRoutesInfo> routes = await adsRoutingClient.GetRoutesListAsync();
@@ -404,7 +436,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
     public async Task LoadLicensesAsync()
     {
-        using AdsSystemClient systemClient = new();
+        AdsSystemClient systemClient = new(_LoggerFactory);
         await systemClient.Connect(Target.NetId);
 
         var licenseList = await systemClient.GetOnlineLicensesAsync();
@@ -478,12 +510,12 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
     private async Task SetNetIdAndReboot()
     {
-        using AdsSystemClient systemClient = new();
+        AdsSystemClient systemClient = new(_LoggerFactory);
         await systemClient.Connect(Target.NetId);
         var systemInfo = await systemClient.GetSystemInfoAsync();
         if (!systemInfo.OsName.Contains("Win") || systemInfo.OsName.Contains("CE"))
         {
-            _LoggerService.LogError("Changing NetId Currently only supported for Big Windows");     // ToDO
+            _logger.LogError("Changing NetId Currently only supported for Big Windows");     // ToDO
             return;
         }
 
@@ -495,7 +527,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
         bool editRouteEntry = result == MessageBoxResult.Yes;
 
-        using AdsRoutingClient routingClient = new();
+        AdsRoutingClient routingClient = new(_LoggerFactory);
 
         await routingClient.Connect(Target?.NetId);
 
@@ -503,7 +535,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
         if(editRouteEntry)
         {
-            using AdsRoutingClient localRoutingClient = new();
+            AdsRoutingClient localRoutingClient = new(_LoggerFactory);
 
             await localRoutingClient.Connect(AmsNetId.Local.ToString());
 
@@ -520,16 +552,16 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
     private async Task SetNetId()
     {
-        using AdsSystemClient systemClient = new();
+        AdsSystemClient systemClient = new(_LoggerFactory);
         await systemClient.Connect(Target.NetId);
         var systemInfo = await systemClient.GetSystemInfoAsync();
         if (!systemInfo.OsName.Contains("Win") || systemInfo.OsName.Contains("CE"))
         {
-            _LoggerService.LogError("Changing NetId Currently only supported for Big Windows");     // ToDo
+            _logger.LogError("Changing NetId Currently only supported for Big Windows");     // ToDo
             return;
         }
 
-        using AdsRoutingClient routingClient = new();
+        AdsRoutingClient routingClient = new(_LoggerFactory);
 
         await routingClient.Connect(Target?.NetId);
 
@@ -540,7 +572,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
     {
         if (!SystemInfo.OsName.Contains("Win") || SystemInfo.OsName.Contains("CE"))
         {
-            _LoggerService.LogInfo("No need to set tick on selected target");
+            _logger.LogInformation("No need to set tick on selected target");
             return;
         }
 
@@ -561,16 +593,16 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
         try
         {
-            using AdsFileClient fileClient = new();
+            AdsFileClient fileClient = new();
             await fileClient.Connect(Target?.NetId);
             await fileClient.StartProcessAsync(path, dir, string.Empty);
         }
         catch (Exception)
         {
-            _LoggerService.LogError("Execution of win8settick.bat failed");
+            _logger.LogError("Execution of win8settick.bat failed");
             return;
         }
-        _LoggerService.LogSuccess("Set tick successfully. Please reboot target");
+        _logger.LogInformation("Set tick successfully. Please reboot target");
     }
 
 }

@@ -235,6 +235,15 @@ namespace AdsUtilitiesUI
             _ = fileItem.LoadChildren();
         }
 
+        private void Run_Click(object sender, RoutedEventArgs e)
+        {
+            FileSystemItem? fileItem = GetSelectedFileSystemItem(sender);
+
+            if (fileItem == null) return;
+
+            _ = fileItem.Run();
+        }
+
     }
 
     public static class VisualTreeHelperExtensions

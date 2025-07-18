@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Icon="/Images/icon.png"
-        Title="ADS Utilities" Height="700" Width="830"
+        Title="ADS Utilities" Height="725" Width="830"
         ResizeMode="NoResize"
         WindowStyle="SingleBorderWindow"
         Background="WhiteSmoke">
@@ -119,8 +119,6 @@
                     <TextBlock Text="{Binding Title}" FontSize="12" Padding="7,3"/>
                 </DataTemplate>
             </TabControl.ItemTemplate>
-
-
             <TabControl.ContentTemplate>
                 <DataTemplate>
                     <Frame Content="{Binding Page}" NavigationUIVisibility="Hidden"/>
@@ -129,11 +127,28 @@
 
         </TabControl>
 
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right" Grid.Row="2" Margin="5">
-            <TextBlock Text="{Binding Icon}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <TextBlock Text="{Binding Timestamp}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <TextBlock Text="{Binding LogMessage}" VerticalAlignment="Center"/>
-        </StackPanel>
+        <!--Logging Area-->
+        <ListBox x:Name="LogListBox"
+         ItemsSource="{Binding LogMessages}"
+         Grid.Row="2"
+         Height="45"
+         Margin="5"
+         HorizontalAlignment="Stretch"
+         VerticalAlignment="Top"
+         FontFamily="Consolas"
+         FontSize="12">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Margin="2">
+                        <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm:ss}}" Margin="0,0,10,0"/>
+                        <TextBlock Text="[" Foreground="Gray"/>
+                        <TextBlock Text="{Binding LogLevel}" Foreground="Orange"/>
+                        <TextBlock Text="] " Foreground="Gray"/>
+                        <TextBlock Text="{Binding Message}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
     </Grid>
     

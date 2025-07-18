@@ -1,5 +1,6 @@
 ﻿using AdsUtilities;
 using AdsUtilitiesUI.Views.Windows;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -22,14 +23,19 @@ using System.Windows.Shapes;
 
 namespace AdsUtilitiesUI;
 
-public class FileExplorerViewModel : INotifyPropertyChanged // ToDo: ViewModelTargetAccessPage
+public class FileExplorerViewModel : INotifyPropertyChanged
 {
-    public FileExplorerViewModel()  //ILoggerService loggerService
+    //private ILogger _logger;
+
+    //private ILoggerFactory _LoggerFactory;
+
+    public FileExplorerViewModel() //ILoggerFactory loggerFactory
     {
-        //_logger = loggerService;
+        //_LoggerFactory = loggerFactory;
+        //_logger = _LoggerFactory.CreateLogger<FileExplorerViewModel>();
     }
 
-    //private ILoggerService _logger { get; }
+
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -92,11 +98,11 @@ public class FileExplorerViewModel : INotifyPropertyChanged // ToDo: ViewModelTa
 
     public async Task CopyFile(FileSystemItem sourceFile, FileSystemItem targetFolder)
     {
-        using AdsFileClient sourceFileClient = new();
+        AdsFileClient sourceFileClient = new();
         if (!await sourceFileClient.Connect(sourceFile.DeviceNetID))
             return; 
 
-        using AdsFileClient destinationFileClient = new();
+        AdsFileClient destinationFileClient = new();
         if (!await destinationFileClient.Connect(targetFolder.DeviceNetID))
             return; 
 
@@ -122,11 +128,11 @@ public class FileExplorerViewModel : INotifyPropertyChanged // ToDo: ViewModelTa
         }
         catch (OperationCanceledException)
         {
-            //_logger.LogInfo("Copying process aborted.");
+            //_logger.LogInformation("Copying process aborted.");
         }
         catch (Exception ex)
         {
-            ;
+            //_logger.LogError(ex, "An error occurred while copying the file.");
         }
         finally
         {
@@ -195,6 +201,7 @@ public class FileSystemItem
         }
     }
 
+    public bool IsExecutable => !IsDirectory && Name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true;
 
     public static string ConvertByteSize(long byteSize)
     {
@@ -213,7 +220,7 @@ public class FileSystemItem
 
     public async Task Rename(string newName)
     {
-        using AdsFileClient fileClient = new();
+        AdsFileClient fileClient = new();
         await fileClient.Connect(DeviceNetID);
         await fileClient.RenameFileAsync($"{ParentDirectory}/{Name}", $"{ParentDirectory}/{newName}");
         Name = newName;
@@ -222,15 +229,24 @@ public class FileSystemItem
 
     public async Task Delete()
     {
-        using AdsFileClient fileClient = new();
+        AdsFileClient fileClient = new();
         await fileClient.Connect(DeviceNetID);
         await fileClient.DeleteFileAsync($"{ParentDirectory}/{Name}");
         await ParentItem?.LoadChildren();
     }
 
+    public async Task Run()
+    {
+        AdsFileClient adsFileClient = new();
+        await adsFileClient.Connect(DeviceNetID);
+        await adsFileClient.StartProcessAsync(ParentDirectory + "/" + Name, ParentDirectory, string.Empty);
+
+        //await adsFileClient.StartProcessAsync(@"C:\Program Files\Notepad++\notepad++.exe", @"C:\Program Files\Notepad++", string.Empty);
+    }
+
     public async Task LoadChildren()
     {
-        using AdsFileClient fileClient = new();
+        AdsFileClient fileClient = new();
         await fileClient.Connect(DeviceNetID);
         string fullPath = System.IO.Path.Combine(ParentDirectory, Name);
         Children.Clear();

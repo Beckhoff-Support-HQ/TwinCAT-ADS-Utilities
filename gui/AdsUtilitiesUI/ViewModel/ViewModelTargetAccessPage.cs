@@ -1,4 +1,5 @@
 ﻿using AdsUtilities;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,11 +11,6 @@ namespace AdsUtilitiesUI.ViewModels
     public abstract class ViewModelTargetAccessPage : ViewModelBase // A ViewModel template for all pages that access target access functions
     {
         public TargetService _TargetService
-        {
-            get; set;
-        }
-
-        public LoggerService _LoggerService
         {
             get; set;
         }

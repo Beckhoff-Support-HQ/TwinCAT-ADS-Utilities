@@ -13,48 +13,12 @@ using System.Threading.Channels;
 
 namespace AdsUtilities;
 
-public class AdsRoutingClient : IDisposable
+public class AdsRoutingClient : AdsClientBase
 {
-    public string NetId { get { return _netId.ToString(); } }
-
-    private ILogger? _logger;
-
-    private readonly AdsClient _adsClient = new();
-
-    private AmsNetId? _netId;
-
-    public bool IsConnected { get; private set; } = false;
-
-    public void ConfigureLogger(ILogger logger)
-    {
-        _logger = logger;
-    }
-
-    public AdsRoutingClient()
+    public AdsRoutingClient(ILoggerFactory? loggerFactory = null)
+        : base(loggerFactory)
     {
 
-    }
-
-    public async Task<bool> Connect(string netId, CancellationToken cancel = default)
-    {
-        _netId = new AmsNetId(netId);
-        _adsClient.Connect(_netId, AmsPort.SystemService);
-
-        var readState = await _adsClient.ReadStateAsync(cancel);
-
-        _adsClient.Disconnect();
-
-        if (readState.Succeeded)
-        {
-            IsConnected = true;
-            return true;
-        }
-        return false;
-    }
-
-    public async Task<bool> Connect()
-    {
-        return await Connect(AmsNetId.Local.ToString());
     }
 
     public async Task AddRouteByIpAsync(
@@ -153,18 +117,21 @@ public class AdsRoutingClient : IDisposable
             cancel);
     }
 
-    public async Task RemoveLocalRouteEntryAsync(string routeName)
+    public async Task RemoveLocalRouteEntryAsync(string routeName, CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
         WriteRequestHelper deleteRouteReq = new WriteRequestHelper()
             .AddStringUTF8(routeName);
 
-        var wRes = await _adsClient.WriteAsync((uint)AdsIndexGroups.SysServDelRemote, 0, deleteRouteReq);
+        var wRes = await adsConnection.WriteAsync(
+            (uint)AdsIndexGroups.SysServDelRemote, 
+            0, 
+            deleteRouteReq.GetBytes(), 
+            cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         //wRes.ThrowOnError();  // There seems to be a timeout even if the command succeeds
     }
@@ -176,8 +143,6 @@ public class AdsRoutingClient : IDisposable
         CancellationToken cancel = default, 
         bool temporary = false)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         WriteRequestHelper addRouteRequest = new WriteRequestHelper()
             .Add(netIdEntry.Split('.').Select(byte.Parse).ToArray())
             .Add(temporary ? Segments.ROUTETYPE_TEMP_LOCAL : Segments.ROUTETYPE_STATIC_LOCAL)
@@ -189,15 +154,16 @@ public class AdsRoutingClient : IDisposable
             .AddStringUTF8(ipAddressEntry)
             .AddStringUTF8(routeNameEntry);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var wRes = await _adsClient.WriteAsync(
+        var wRes = await adsConnection.WriteAsync(
             (uint)AdsIndexGroups.SysServAddRemote,
             0,
-            addRouteRequest,
+            addRouteRequest.GetBytes(),
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         wRes.ThrowOnError();
     }
@@ -209,8 +175,6 @@ public class AdsRoutingClient : IDisposable
         CancellationToken cancel = default,
         bool temporary = false)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         WriteRequestHelper addRouteRequest = new WriteRequestHelper()
             .Add(netIdEntry.Split('.').Select(byte.Parse).ToArray())
             .Add(temporary ? Segments.ROUTETYPE_TEMP_LOCAL : Segments.ROUTETYPE_STATIC_LOCAL)
@@ -222,15 +186,16 @@ public class AdsRoutingClient : IDisposable
             .AddStringUTF8(hostnameEntry)
             .AddStringUTF8(routeNameEntry);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var wRes = await _adsClient.WriteAsync(
+        var wRes = await adsConnection.WriteAsync(
             (uint)AdsIndexGroups.SysServAddRemote,
             0,
-            addRouteRequest,
+            addRouteRequest.GetBytes(),
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         wRes.ThrowOnError();
     }
@@ -355,8 +320,6 @@ public class AdsRoutingClient : IDisposable
         string? hostNameRemote = null, 
         bool temporary = false)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         if (!IPAddress.TryParse(ipAddressRemote, out IPAddress? ipBytes))
         {
             _logger?.LogError("Could not add a route entry on remote system because the provided IP address is invalid");
@@ -403,16 +366,17 @@ public class AdsRoutingClient : IDisposable
 
             byte[] rdBfr = new byte[2048];
 
-            _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+            using var session = CreateSession((int)AdsPorts.SystemService);
+            using var adsConnection = (AdsConnection)session.Connect();
 
-            var rwResult = await _adsClient.ReadWriteAsync(
+            var rwResult = await adsConnection.ReadWriteAsync(
                 (uint)AdsIndexGroups.SysServBroadcast, 
                 0, 
                 rdBfr, 
                 addRouteRequest.GetBytes(), 
                 cancel);
 
-            _adsClient.Disconnect();
+            adsConnection.Disconnect();
 
             if (rwResult.ErrorCode == AdsErrorCode.NoError)
                 rwSuccessAny = true;
@@ -431,16 +395,17 @@ public class AdsRoutingClient : IDisposable
 
                 byte[] rdBfr = new byte[2048];
 
-                _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+                using var session = CreateSession((int)AdsPorts.SystemService);
+                using var adsConnection = (AdsConnection)session.Connect();
 
-                var rwResult = await _adsClient.ReadWriteAsync(
+                var rwResult = await adsConnection.ReadWriteAsync(
                     (uint)AdsIndexGroups.SysServBroadcast, 
                     0, 
                     rdBfr, 
                     addRouteRequest.GetBytes(), 
                     cancel);
 
-                _adsClient.Disconnect();
+                adsConnection.Disconnect();
 
                 if (rwResult.ErrorCode == AdsErrorCode.NoError)
                     rwSuccessAny = true;
@@ -458,23 +423,22 @@ public class AdsRoutingClient : IDisposable
 
     public async Task<string?> GetIpFromHostname(string hostname, CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         WriteRequestHelper getIpRequest = new WriteRequestHelper()
             .AddStringUTF8(hostname);
 
         byte[] ipAddressBuffer = new byte[4];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rwResult = await _adsClient.ReadWriteAsync(
+        var rwResult = await adsConnection.ReadWriteAsync(
             (uint)AdsIndexGroups.SysServIpHelperApi, 
             (uint)AdsIndexOffsets.SysServIpHelperIpFromHostname, 
             ipAddressBuffer, 
             getIpRequest.GetBytes(), 
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         return ipAddressBuffer.All(b => b == 0) ? null : new IPAddress(ipAddressBuffer).ToString();
     }
@@ -532,129 +496,129 @@ public class AdsRoutingClient : IDisposable
         return BitConverter.ToUInt32(bytes, 0);
     }
 
-    public async Task AddSubRouteAsync(
-        string netIdGateway,
-        string netIdSubRoute,
-        string nameSubRoute, 
-        CancellationToken cancel = default)
-    {
-        using AdsRoutingClient routesReader = new();
+    //public async Task AddSubRouteAsync(
+    //    string netIdGateway,
+    //    string netIdSubRoute,
+    //    string nameSubRoute, 
+    //    CancellationToken cancel = default)
+    //{
+    //    using AdsRoutingClient routesReader = new();
 
-        await routesReader.Connect(netIdGateway);
+    //    await routesReader.Connect(netIdGateway);
 
-        var routesGateway = await routesReader.GetRoutesListAsync(cancel);          // Check if there is a route between gateway and sub-route-system - mandatory for sub-route to work
+    //    var routesGateway = await routesReader.GetRoutesListAsync(cancel);          // Check if there is a route between gateway and sub-route-system - mandatory for sub-route to work
 
-        if (!routesGateway.Where(r => r.NetId == netIdSubRoute).Any())
-        {
-            _logger?.LogCritical("Sub-Route to {netIdSub} with gateway {netIdGate} could not be added because there is no existing route entry to the sub-route on the gateway",
-                netIdSubRoute, netIdGateway);
+    //    if (!routesGateway.Where(r => r.NetId == netIdSubRoute).Any())
+    //    {
+    //        _logger?.LogCritical("Sub-Route to {netIdSub} with gateway {netIdGate} could not be added because there is no existing route entry to the sub-route on the gateway",
+    //            netIdSubRoute, netIdGateway);
 
-            return;
-        }
+    //        return;
+    //    }
 
-        AdsDirectory staticRoutesDir = AdsDirectory.TargetDir;
-        string staticRoutesPath = "StaticRoutes.xml";
+    //    AdsDirectory staticRoutesDir = AdsDirectory.TargetDir;
+    //    string staticRoutesPath = "StaticRoutes.xml";
 
-        using AdsFileClient routesEditor = new();
+    //    using AdsFileClient routesEditor = new();
 
 
-        await routesEditor.Connect(_netId.ToString());
+    //    await routesEditor.Connect(_netId.ToString());
 
-        byte[] staticRoutesBuffer = new byte[20_000];
+    //    byte[] staticRoutesBuffer = new byte[20_000];
 
-        await routesEditor.FileReadFullAsync(
-            staticRoutesBuffer,
-            staticRoutesPath,
-            staticRoutesDir,
-            false,
-            cancel);
+    //    await routesEditor.FileReadFullAsync(
+    //        staticRoutesBuffer,
+    //        staticRoutesPath,
+    //        staticRoutesDir,
+    //        false,
+    //        cancel);
 
-        string staticRoutesString = Encoding.UTF8.GetString(staticRoutesBuffer.Where(c => c is not 0).ToArray());
-        XDocument routesXml = XDocument.Parse(staticRoutesString);
+    //    string staticRoutesString = Encoding.UTF8.GetString(staticRoutesBuffer.Where(c => c is not 0).ToArray());
+    //    XDocument routesXml = XDocument.Parse(staticRoutesString);
 
-        var gatewayEntry = routesXml.Descendants("Route")
-                             .FirstOrDefault(route => route.Element("NetId")?.Value == netIdGateway);
+    //    var gatewayEntry = routesXml.Descendants("Route")
+    //                         .FirstOrDefault(route => route.Element("NetId")?.Value == netIdGateway);
 
-        if (gatewayEntry != null)
-        {
-            XElement subRoute = new("SubRoute",
-                                new XElement("Name", nameSubRoute),
-                                new XElement("NetId", netIdSubRoute));
+    //    if (gatewayEntry != null)
+    //    {
+    //        XElement subRoute = new("SubRoute",
+    //                            new XElement("Name", nameSubRoute),
+    //                            new XElement("NetId", netIdSubRoute));
 
-            gatewayEntry.Add(subRoute);
+    //        gatewayEntry.Add(subRoute);
 
-            await routesEditor.FileWriteFullAsync(
-                Encoding.UTF8.GetBytes(routesXml.ToString()),
-                staticRoutesPath,
-                staticRoutesDir,               
-                false, 
-                cancel);
+    //        await routesEditor.FileWriteFullAsync(
+    //            Encoding.UTF8.GetBytes(routesXml.ToString()),
+    //            staticRoutesPath,
+    //            staticRoutesDir,               
+    //            false, 
+    //            cancel);
 
-            _logger?.LogInformation("Sub-Route to {netIdSub} with gateway {netIdGate} was successfully added.", 
-                netIdSubRoute, netIdGateway);
-        }
-        else
-        {
-            _logger?.LogError("Parsing error with the StaticRoutesXml of {netIdLocal}", _netId);
-        }
-    }
+    //        _logger?.LogInformation("Sub-Route to {netIdSub} with gateway {netIdGate} was successfully added.", 
+    //            netIdSubRoute, netIdGateway);
+    //    }
+    //    else
+    //    {
+    //        _logger?.LogError("Parsing error with the StaticRoutesXml of {netIdLocal}", _netId);
+    //    }
+    //}
 
-    public async Task AddAdsMqttRouteAsync(
-        string brokerAddress,
-        uint brokerPort, 
-        string topic, 
-        bool unidirectional = false,
-        uint qualityOfService = default, 
-        string user = default, 
-        string password = default, 
-        CancellationToken cancel = default)
-    {
-        AdsDirectory staticRoutesDir = AdsDirectory.TargetDir;
-        string staticRoutesPath = "StaticRoutes.xml";
+    //public async Task AddAdsMqttRouteAsync(
+    //    string brokerAddress,
+    //    uint brokerPort, 
+    //    string topic, 
+    //    bool unidirectional = false,
+    //    uint qualityOfService = default, 
+    //    string user = default, 
+    //    string password = default, 
+    //    CancellationToken cancel = default)
+    //{
+    //    AdsDirectory staticRoutesDir = AdsDirectory.TargetDir;
+    //    string staticRoutesPath = "StaticRoutes.xml";
 
-        using AdsFileClient routesEditor = new();
-        await routesEditor.Connect(_netId.ToString());
+    //    using AdsFileClient routesEditor = new();
+    //    await routesEditor.Connect(_netId.ToString());
 
-        byte[] staticRoutesBuffer = new byte[20_000];
+    //    byte[] staticRoutesBuffer = new byte[20_000];
 
-        await routesEditor.FileReadFullAsync(
-            staticRoutesBuffer,
-            staticRoutesPath,
-            staticRoutesDir,
-            false,
-            cancel);
+    //    await routesEditor.FileReadFullAsync(
+    //        staticRoutesBuffer,
+    //        staticRoutesPath,
+    //        staticRoutesDir,
+    //        false,
+    //        cancel);
 
-        string staticRoutesString = Encoding.UTF8.GetString(staticRoutesBuffer.Where(c => c is not 0).ToArray());
-        XDocument routesXml = XDocument.Parse(staticRoutesString);
+    //    string staticRoutesString = Encoding.UTF8.GetString(staticRoutesBuffer.Where(c => c is not 0).ToArray());
+    //    XDocument routesXml = XDocument.Parse(staticRoutesString);
 
-        var connectionsEntry = routesXml.Element("RemoteConnections");
+    //    var connectionsEntry = routesXml.Element("RemoteConnections");
 
-        if (connectionsEntry is null)
-            return;
+    //    if (connectionsEntry is null)
+    //        return;
 
-        XElement mqttRoute = new("Mqtt",
-        new XElement("Address", brokerAddress, new XAttribute("Port", $"{brokerPort}")));
+    //    XElement mqttRoute = new("Mqtt",
+    //    new XElement("Address", brokerAddress, new XAttribute("Port", $"{brokerPort}")));
 
-        if (unidirectional)
-            mqttRoute.Add(new XAttribute("Unidirectional", "true"));
-        if (!string.IsNullOrEmpty(topic))
-            mqttRoute.Add(new XElement("Topic", topic));
-        if (qualityOfService > 0)
-            mqttRoute.Add(new XElement("QoS", qualityOfService));
-        if (!string.IsNullOrEmpty(user))
-            mqttRoute.Add(new XElement("User", user));
-        if (!string.IsNullOrEmpty(password))
-            mqttRoute.Add(new XElement("Pwd", password));
+    //    if (unidirectional)
+    //        mqttRoute.Add(new XAttribute("Unidirectional", "true"));
+    //    if (!string.IsNullOrEmpty(topic))
+    //        mqttRoute.Add(new XElement("Topic", topic));
+    //    if (qualityOfService > 0)
+    //        mqttRoute.Add(new XElement("QoS", qualityOfService));
+    //    if (!string.IsNullOrEmpty(user))
+    //        mqttRoute.Add(new XElement("User", user));
+    //    if (!string.IsNullOrEmpty(password))
+    //        mqttRoute.Add(new XElement("Pwd", password));
 
-        connectionsEntry.Add(mqttRoute);
+    //    connectionsEntry.Add(mqttRoute);
 
-        await routesEditor.FileWriteFullAsync(
-            Encoding.UTF8.GetBytes(routesXml.ToString()), 
-            staticRoutesPath,
-            staticRoutesDir,
-            false, 
-            cancel);
-    }
+    //    await routesEditor.FileWriteFullAsync(
+    //        Encoding.UTF8.GetBytes(routesXml.ToString()), 
+    //        staticRoutesPath,
+    //        staticRoutesDir,
+    //        false, 
+    //        cancel);
+    //}
 
     /*public void AddAdsMqttRoute(string brokerAddress, uint brokerPort, AdsMqttTlsParameters tlsParameters, bool unidirectional = false, string topic = default, uint qualityOfService = default, string user = default, string password = default)
     {
@@ -674,17 +638,15 @@ public class AdsRoutingClient : IDisposable
 
     public async Task<List<StaticRoutesInfo>> GetRoutesListAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
-        // Read ADS routes from target system 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
         List<StaticRoutesInfo> routesList = new();
 
         for (uint i = 0; i < 100; i++)
         {
             ReadRequestHelper routeInfo = new(235);
-            var readResult = await _adsClient.ReadAsync((uint)AdsIndexGroups.SysServEnumRemote, i, routeInfo, cancel);
+            var readResult = await adsConnection.ReadAsync((uint)AdsIndexGroups.SysServEnumRemote, i, routeInfo.Bytes, cancel);
 
             if (readResult.ErrorCode != AdsErrorCode.NoError)
                 break;
@@ -702,22 +664,21 @@ public class AdsRoutingClient : IDisposable
             };
             routesList.Add(entry);
         }
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         return routesList;
     }
 
     public async Task<string> GetFingerprint(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         byte[] rdBfr = new byte[129];
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
-        var rRes = await _adsClient.ReadAsync((uint)AdsIndexGroups.SysServTcSystemInfo, 9, rdBfr, cancel);
+        var rRes = await adsConnection.ReadAsync((uint)AdsIndexGroups.SysServTcSystemInfo, 9, rdBfr, cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rRes.ThrowOnError();
 
@@ -726,13 +687,12 @@ public class AdsRoutingClient : IDisposable
 
     public async Task<List<NetworkInterfaceInfo>> GetNetworkInterfacesAsync(CancellationToken cancel = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
 
         byte[] readBfr = new byte[4];
 
-        var rRes = await _adsClient.ReadAsync(
+        var rRes = await adsConnection.ReadAsync(
             (uint)AdsIndexGroups.SysServIpHelperApi,
             (uint)AdsIndexOffsets.SysServIpHelperAdapterInfo, 
             readBfr, 
@@ -743,13 +703,13 @@ public class AdsRoutingClient : IDisposable
         uint nicBfrSize = BitConverter.ToUInt32(readBfr, 0);
         byte[] nicBfr = new byte[nicBfrSize];
 
-        rRes = await _adsClient.ReadAsync(
+        rRes = await adsConnection.ReadAsync(
             (uint)AdsIndexGroups.SysServIpHelperApi,
             (uint)AdsIndexOffsets.SysServIpHelperAdapterInfo,
             nicBfr, 
             cancel);
 
-        _adsClient.Disconnect();
+        adsConnection.Disconnect();
 
         rRes.ThrowOnError();
 
@@ -805,8 +765,6 @@ public class AdsRoutingClient : IDisposable
         ushort secondsTimeout = 5,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         if (!IPAddress.TryParse(ipAddress, out var ip))
             yield break;
 
@@ -820,14 +778,15 @@ public class AdsRoutingClient : IDisposable
             completionSource.TrySetResult();    // Signals that there is a new response to the broadcast search
         }
 
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
+
         // Register a notification and set callback method - the system service generates notification responses for every remote system found on the broadcast
-        _adsClient.AdsNotification += RecievedBroadcastResponse;
+        adsConnection.AdsNotification += RecievedBroadcastResponse;
 
-        NotificationSettings sttngs = new(AdsTransMode.OnChange, 100, 0);
+        NotificationSettings sttngs = new(AdsTransMode.OnChange, 100, 0);       
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
-
-        var deviceNotiResult = await _adsClient.AddDeviceNotificationAsync(
+        var deviceNotiResult = await adsConnection.AddDeviceNotificationAsync(
             (uint)AdsIndexGroups.SysServBroadcast, 
             0, 
             2048, 
@@ -838,7 +797,7 @@ public class AdsRoutingClient : IDisposable
         TriggerBroadcastPacket broadcastPacket = new(ip.GetAddressBytes(), _netId.ToBytes());
 
         // This tells the system service to send a broadcast telegram on the selected NIC
-        var wRes = await _adsClient.WriteAsync(
+        var wRes = await adsConnection.WriteAsync(
             (uint)AdsIndexGroups.SysServBroadcast, 
             1, 
             StructConverter.StructureToByteArray(broadcastPacket), 
@@ -876,13 +835,13 @@ public class AdsRoutingClient : IDisposable
             broadcastResults.CompleteAdding();
 
             // Unregister the Event / Handle after timeout has elapsed or the action was canceled 
-            await _adsClient.DeleteDeviceNotificationAsync(
+            await adsConnection.DeleteDeviceNotificationAsync(
                 deviceNotiResult.Handle, 
                 cancellationToken);
 
-            _adsClient.AdsNotification -= RecievedBroadcastResponse;
+            adsConnection.AdsNotification -= RecievedBroadcastResponse;
 
-            _adsClient.Disconnect();
+            adsConnection.Disconnect();
         }
 
         // Drain remaining items after marking collection complete
@@ -909,8 +868,6 @@ public class AdsRoutingClient : IDisposable
         ushort secondsTimeout = 5,
         CancellationToken cancellationToken = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         List<TargetInfo> broadcastResults = new();
 
         void RecievedBroadcastResponse(object sender, AdsNotificationEventArgs e)
@@ -918,14 +875,15 @@ public class AdsRoutingClient : IDisposable
             broadcastResults.Add(ParseBroadcastReturn(e.Data.ToArray()));
         }
 
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
+
         // Register a notification. The results of the broadcast search will be sent as a response on this notification (one notification per found device)
-        _adsClient.AdsNotification += RecievedBroadcastResponse;
+        adsConnection.AdsNotification += RecievedBroadcastResponse;
 
         NotificationSettings sttngs = new(AdsTransMode.OnChange, 100, 0);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
-
-        uint notiHdl = _adsClient.AddDeviceNotification(
+        uint notiHdl = adsConnection.AddDeviceNotification(
             (uint)AdsIndexGroups.SysServBroadcast, 
             0, 
             2048, 
@@ -945,7 +903,7 @@ public class AdsRoutingClient : IDisposable
             TriggerBroadcastPacket broadcastPacket = new(broadcastAddress.GetAddressBytes(), _netId.ToBytes());
             try
             {
-                await _adsClient.WriteAsync(
+                await adsConnection.WriteAsync(
                     (uint)AdsIndexGroups.SysServBroadcast,
                     1, 
                     StructConverter.StructureToByteArray(broadcastPacket), 
@@ -967,9 +925,9 @@ public class AdsRoutingClient : IDisposable
         finally
         {
             // Unregister the Event / Handle
-            _adsClient.DeleteDeviceNotification(notiHdl);
-            _adsClient.AdsNotification -= RecievedBroadcastResponse;
-            _adsClient.Disconnect();
+            adsConnection.DeleteDeviceNotification(notiHdl);
+            adsConnection.AdsNotification -= RecievedBroadcastResponse;
+            adsConnection.Disconnect();
         }
         return broadcastResults;
     }
@@ -979,8 +937,6 @@ public class AdsRoutingClient : IDisposable
         ushort secondsTimeout = 5,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (!IsConnected) throw new InvalidOperationException("Client is not connected");
-
         BlockingCollection<TargetInfo> broadcastResults = new();
         TaskCompletionSource completionSource = new();
 
@@ -991,14 +947,15 @@ public class AdsRoutingClient : IDisposable
             completionSource.TrySetResult();                                // Signals that there is a new response to the broadcast search
         }
 
+        using var session = CreateSession((int)AdsPorts.SystemService);
+        using var adsConnection = (AdsConnection)session.Connect();
+
         // Register a notification and set callback method - the system service generates notification responses for every remote system found on the broadcast
-        _adsClient.AdsNotification += RecievedBroadcastResponse;
+        adsConnection.AdsNotification += RecievedBroadcastResponse;
 
         NotificationSettings sttngs = new(AdsTransMode.OnChange, 100, 0);
 
-        _adsClient.Connect(_netId, (int)AdsPorts.SystemService);
-
-        var deviceNotiResult = await _adsClient.AddDeviceNotificationAsync(
+        var deviceNotiResult = await adsConnection.AddDeviceNotificationAsync(
             (uint)AdsIndexGroups.SysServBroadcast, 
             0, 
             2048, 
@@ -1019,7 +976,7 @@ public class AdsRoutingClient : IDisposable
             TriggerBroadcastPacket broadcastPacket = new(broadcastAddress.GetAddressBytes(), _netId.ToBytes());
 
             // This tells the system service to send a broadcast telegram on the selected NIC
-            var wRes = await _adsClient.WriteAsync(
+            var wRes = await adsConnection.WriteAsync(
                 (uint)AdsIndexGroups.SysServBroadcast,
                 1,
                 StructConverter.StructureToByteArray(broadcastPacket),
@@ -1059,13 +1016,13 @@ public class AdsRoutingClient : IDisposable
             broadcastResults.CompleteAdding();
 
             // Unregister the Event / Handle after timeout has elapsed or the action was canceled 
-            await _adsClient.DeleteDeviceNotificationAsync(
+            await adsConnection.DeleteDeviceNotificationAsync(
                 deviceNotiResult.Handle, 
                 cancellationToken);
 
-            _adsClient.AdsNotification -= RecievedBroadcastResponse;
+            adsConnection.AdsNotification -= RecievedBroadcastResponse;
 
-            _adsClient.Disconnect();
+            adsConnection.Disconnect();
         }
 
         // Drain remaining items after marking collection complete
@@ -1287,7 +1244,7 @@ public class AdsRoutingClient : IDisposable
                 return;
             }
         }
-        using AdsSystemClient systemClient = new();
+        AdsSystemClient systemClient = new();
 
         await systemClient.Connect(_netId.ToString());
 
@@ -1301,18 +1258,6 @@ public class AdsRoutingClient : IDisposable
         if (rebootNow)
         {
             await systemClient.RebootAsync(0, cancel);
-        }
-    }
-
-    public void Dispose()
-    {
-        if (_adsClient.IsConnected)
-            _adsClient.Disconnect();
-
-        if (!_adsClient.IsDisposed)
-        {
-            _adsClient.Dispose();
-            GC.SuppressFinalize(this);
         }
     }
 }

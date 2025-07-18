@@ -18,12 +18,17 @@ using System.IO;
 using System.Text.Json;
 using System.Printing;
 using System.Windows.Controls;
+using Microsoft.Extensions.Logging;
 
 namespace AdsUtilitiesUI;
 
 public class AdsRoutingViewModel : ViewModelTargetAccessPage
 {
-    public AdsRoutingViewModel(TargetService targetService, ILoggerService loggerService)
+    private ILogger _logger;
+
+    private ILoggerFactory _LoggerFactory;
+
+    public AdsRoutingViewModel(TargetService targetService, ILoggerFactory loggerFactory)
     {
         AddRouteSelection = new();
 
@@ -32,7 +37,8 @@ public class AdsRoutingViewModel : ViewModelTargetAccessPage
         _TargetService.OnTargetChanged += LoadNetworkAdapters;
         _TargetService.OnTargetChanged += UpdateRemoteName;
 
-        _LoggerService = (LoggerService)loggerService;
+        _LoggerFactory = loggerFactory;
+        _logger = _LoggerFactory.CreateLogger<AdsRoutingViewModel>();
 
         BroadcastCommand = new(Broadcast);
         AddRouteCommand = new(AddRoute);
@@ -103,7 +109,7 @@ public class AdsRoutingViewModel : ViewModelTargetAccessPage
     {
         if (Target is null) return;
 
-        using AdsRoutingClient client = new ();
+        AdsRoutingClient client = new (_LoggerFactory);
         await client.Connect(Target?.NetId);
         var adapters = await client.GetNetworkInterfacesAsync();
         var adapterItems = adapters.Select(adapter => new NetworkAdapterItem { AdapterInfo = adapter, IsSelected = true }).ToList();
@@ -139,7 +145,7 @@ public class AdsRoutingViewModel : ViewModelTargetAccessPage
             if (nicsToBroadcastOn.Count == 0)
                 return;
 
-            using AdsRoutingClient client = new();
+            AdsRoutingClient client = new(_LoggerFactory);
             await client.Connect(Target?.NetId);
             TargetInfoList.Clear();
             await foreach (var target in client.AdsBroadcastSearchStreamAsync(nicsToBroadcastOn))
@@ -171,7 +177,7 @@ public class AdsRoutingViewModel : ViewModelTargetAccessPage
     {
         if (Target is null) return;
 
-        using AdsRoutingClient client = new();
+        AdsRoutingClient client = new(_LoggerFactory);
         await client.Connect(Target?.NetId);
         TargetInfoList.Clear();
         await foreach (var target in client.AdsSearchByIpAsync(ipAddress))
@@ -182,7 +188,7 @@ public class AdsRoutingViewModel : ViewModelTargetAccessPage
 
     public async Task SearchByName()
     {
-        using AdsRoutingClient routingClient = new();
+        AdsRoutingClient routingClient = new(_LoggerFactory);
         await routingClient.Connect(Target?.NetId);
 
         string? ip = await routingClient.GetIpFromHostname(IpOrHostnameInput);
@@ -204,7 +210,7 @@ public class AdsRoutingViewModel : ViewModelTargetAccessPage
 
         if (!AddRouteSelection.RequiredParamsProvided())
         {
-            _LoggerService.LogError("Add route - missing required input");
+            _logger.LogError("Add route - missing required input");
             return;
         }
 
@@ -225,13 +231,13 @@ public class AdsRoutingViewModel : ViewModelTargetAccessPage
 
                 if (result == MessageBoxResult.No)
                 {
-                    _LoggerService.LogInfo("Action canceled");
+                    _logger.LogInformation("Action canceled");
                     return;
                 }
             }
         }
 
-        using AdsRoutingClient routingClient = new();
+        AdsRoutingClient routingClient = new(_LoggerFactory);
         await routingClient.Connect(Target?.NetId);
 
         if (AddRouteSelection.TypeStaticLocal)

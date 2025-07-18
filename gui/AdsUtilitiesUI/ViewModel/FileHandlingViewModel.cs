@@ -1,4 +1,5 @@
 ﻿using AdsUtilities;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -10,8 +11,11 @@ namespace AdsUtilitiesUI.ViewModels;
 
 class FileHandlingViewModel : ViewModelTargetAccessPage
 {
+    private ILogger _logger;
 
-    public FileHandlingViewModel(TargetService targetService, ILoggerService loggerService)
+    private ILoggerFactory _LoggerFactory;
+
+    public FileHandlingViewModel(TargetService targetService, ILoggerFactory loggerFactory)
     {
         _TargetService = targetService;    
         InitTargetAccess(_TargetService);
@@ -25,8 +29,9 @@ class FileHandlingViewModel : ViewModelTargetAccessPage
             }
             _TargetService.OnTargetChanged -= InitSecondaryRoute;   // Remove this event after initial execution
         };
-        
-        _LoggerService = (LoggerService)loggerService;
+
+        _LoggerFactory = loggerFactory;
+        _logger = _LoggerFactory.CreateLogger<FileHandlingViewModel>();
     }
 
     private void InitSecondaryRoute(object? sender, StaticRouteStatus e)

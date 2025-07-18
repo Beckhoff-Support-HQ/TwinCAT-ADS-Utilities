@@ -1,11 +1,13 @@
 ﻿using AdsUtilities;
 using AdsUtilitiesUI.Model;
 using AdsUtilitiesUI.ViewModels;
+using Microsoft.Extensions.Logging;
 using System.Collections.ObjectModel;
 using System.Net;
 using System.Net.Sockets;
 using System.Windows.Input;
 using TwinCAT.Ads;
+using System.Windows.Threading;
 
 
 namespace AdsUtilitiesUI;
@@ -17,7 +19,9 @@ class MainWindowViewModel : ViewModelBase
 
     public TargetService _targetService { get; }
 
-    public LoggerService _loggerService { get; }
+    private ILogger _logger;
+
+    private ILoggerFactory _LoggerFactory;
 
     public ObservableCollection<LogMessage> LogMessages { get; set; }
 
@@ -42,14 +46,20 @@ class MainWindowViewModel : ViewModelBase
         RebootCommand = new(Reboot);
 
         LogMessages = new();
-        _loggerService = new LoggerService(LogMessages, System.Windows.Threading.Dispatcher.CurrentDispatcher);
-        _loggerService.OnNewLogMessage += OnNewLogMessageReceived;
+        _LoggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder
+                .SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Information)
+                .AddProvider(new LoggerService(LogMessages, Dispatcher.CurrentDispatcher));
+        });
+
+        _logger = _LoggerFactory.CreateLogger<MainWindowViewModel>();
 
         Tabs = new ObservableCollection<TabViewModel>
         {
-            new ("ADS Routing", new AdsRoutingViewModel(_targetService, _loggerService)),
-            new ("File Access", new FileHandlingViewModel(_targetService, _loggerService)),
-            new ("Device Info", new DeviceInfoViewModel(_targetService, _loggerService)),
+            new ("ADS Routing", new AdsRoutingViewModel(_targetService, _LoggerFactory)),
+            new ("File Access", new FileHandlingViewModel(_targetService, _LoggerFactory)),
+            new ("Device Info", new DeviceInfoViewModel(_targetService, _LoggerFactory)),
         };
         SelectedTab = Tabs[0];
     }
@@ -63,66 +73,6 @@ class MainWindowViewModel : ViewModelBase
         //    CurrentTarget = newTarget;
         //}
     }
-
-    private string _logMessage;
-    public string LogMessage
-    {
-        get => _logMessage;
-        set
-        {
-            _logMessage = value;
-            OnPropertyChanged();
-        }
-    }
-
-    private string _icon;
-    public string Icon
-    {
-        get => _icon;
-        set
-        {
-            _icon = value;
-            OnPropertyChanged();
-        }
-    }
-
-    private string _timestamp;
-    public string Timestamp
-    {
-        get => _timestamp;
-        set
-        {
-            _timestamp = value;
-            OnPropertyChanged();
-        }
-    }
-    private async void OnNewLogMessageReceived(object sender, LogMessage logMessage)
-    {
-        Timestamp = logMessage.Timestamp.ToString("HH:mm:ss");
-        LogMessage = logMessage.Message;
-
-        switch (logMessage.LogLevel)
-        {
-            case LogLevel.Success:
-                Icon = "✅";
-                break;
-            case LogLevel.Error:
-                Icon = "❌";
-                break;
-            case LogLevel.Info:
-                Icon = "ℹ️";
-                break;
-            case LogLevel.Warning:
-                Icon = "⚠️";
-                break;
-        }
-
-        await Task.Delay(5000);
-        Timestamp = string.Empty;
-        LogMessage = string.Empty;
-        Icon = string.Empty;
-    }
-
     
     public AsyncRelayCommand ReloadRoutesCommand { get; }
 
@@ -151,7 +101,7 @@ class MainWindowViewModel : ViewModelBase
         
 
         // Check OS
-        using AdsSystemClient systemClient = new ();
+        AdsSystemClient systemClient = new (_LoggerFactory);
         await systemClient.Connect(_targetService.CurrentTarget.NetId);
         SystemInfo sysInfo = await systemClient.GetSystemInfoAsync();
         string os = sysInfo.OsName;
@@ -187,21 +137,21 @@ class MainWindowViewModel : ViewModelBase
     {
         if (_targetService.CurrentTarget?.NetId == AmsNetId.Local.ToString())
         {
-            _loggerService.LogInfo("Please select a target other than local");
+            _logger.LogInformation("Please select a target other than local");
             return;
         }
 
         try
         {
-            using AdsSystemClient systemClient = new();
+            AdsSystemClient systemClient = new(_LoggerFactory);
             await systemClient.Connect(_targetService.CurrentTarget?.NetId);
             await systemClient.ShutdownAsync();                                    
         }
         catch
         {
-            _loggerService.LogError("Could not shutdown target");
+            _logger.LogError("Could not shutdown target");
         }
-        _loggerService.LogSuccess("Shutting down now...");
+        _logger.LogInformation("Shutting down now...");
     }
 
     public AsyncRelayCommand RebootCommand { get; }
@@ -210,20 +160,20 @@ class MainWindowViewModel : ViewModelBase
     {
         if (_targetService.CurrentTarget?.NetId == AmsNetId.Local.ToString())
         {
-            _loggerService.LogInfo("Please select a target other than local");
+            _logger.LogInformation("Please select a target other than local");
             return;
         }
 
         try
         {
-            using AdsSystemClient systemClient = new();
+            AdsSystemClient systemClient = new(_LoggerFactory);
             await systemClient.Connect(_targetService.CurrentTarget?.NetId);
             await systemClient.RebootAsync();
         }
         catch
         {
-            _loggerService.LogError("Could not reboot target");
+            _logger.LogError("Could not reboot target");
         }
-        _loggerService.LogSuccess("Rebooting now...");
+        _logger.LogInformation("Rebooting now...");
     }
 }

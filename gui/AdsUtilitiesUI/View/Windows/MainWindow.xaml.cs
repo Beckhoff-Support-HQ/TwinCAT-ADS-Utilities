@@ -31,7 +31,17 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         DataContext = _viewModel;
-        //Loaded += _viewModel.MainWindow_Initilaize;
+
+        _viewModel.LogMessages.CollectionChanged += (s, e) =>
+        {
+            if (LogListBox.Items.Count > 0)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    LogListBox.ScrollIntoView(LogListBox.Items[LogListBox.Items.Count - 1]);    // Auto scroll
+                }, System.Windows.Threading.DispatcherPriority.Background);
+            }
+        };
     }
 
     private void CmbBx_SelectRoute_SelectionChanged(object sender, SelectionChangedEventArgs e)
