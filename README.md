@@ -32,10 +32,10 @@ ADS serves as a communication layer for many of TwinCAT's basic functionalities 
 
 #### Copy a file to a remote system
 ```csharp
-using AdsFileClient sourceFileClient = new();
-await sourceFileClient.Connect();
+AdsFileClient sourceFileClient = new();
+await sourceFileClient.Connect(AmsNetId.Local.ToString());
 
-using AdsFileClient destinationFileClient = new();
+AdsFileClient destinationFileClient = new();
 await destinationFileClient.Connect("192.168.1.100.1.1");
 
 await sourceFileClient.FileCopyAsync(@"C:/temp/existingFile.txt", destinationFileClient, @"C:/temp/copiedFile.txt");
@@ -43,8 +43,8 @@ await sourceFileClient.FileCopyAsync(@"C:/temp/existingFile.txt", destinationFil
 
 #### Perform a broadcast search
 ```csharp
-using AdsRoutingClient localRouting = new();
-await localRouting.Connect();
+AdsRoutingClient localRouting = new();
+await localRouting.Connect(AmsNetId.Local.ToString());
 
 // As List
 var devicesFound = await localRouting.AdsBroadcastSearchAsync(secondsTimeout: 5);
@@ -58,8 +58,17 @@ await foreach (TargetInfo device in localRouting.AdsBroadcastSearchStreamAsync(s
 
 #### Add an ADS route to a remote system
 ```csharp
-using AdsRoutingClient localRouting = new();
-await localRouting.Connect();
+AdsRoutingClient localRouting = new();
+await localRouting.Connect(AmsNetId.Local.ToString());
 
 await localRouting.AddRouteByIpAsync("192.168.1.100.1.1", "192.168.1.100", "IPC-Office", "Admin", passwordSecStr);
 ```
+
+<!-- GUI EXAMPLES -->
+## GUI
+
+![DemoAdsRouting](images/DemoAdsRouting.png)
+
+![DemoFileAccess](images/DemoFileAccess.png)
+
+![DemoDeciveAccess](images/DemoDeviceInfo.png)
