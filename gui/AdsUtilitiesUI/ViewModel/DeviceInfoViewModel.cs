@@ -219,7 +219,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         try
         {
             AdsSystemClient systemClient = new(_LoggerFactory);
-            await systemClient.Connect(Target?.NetId);
+            await systemClient.Connect(Target?.NetId, cancel);
             SystemInfo = await systemClient.GetSystemInfoAsync(cancel);
         }
         catch (Exception ex) 
@@ -233,7 +233,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         try
         {
             AdsSystemClient systemClient = new(_LoggerFactory);
-            await systemClient.Connect(Target?.NetId);
+            await systemClient.Connect(Target?.NetId, cancel);
             TargetTime = await systemClient.GetSystemTimeAsync(cancel);
         }
         catch (Exception ex) 
@@ -248,7 +248,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         try
         {
             AdsSystemClient systemClient = new(_LoggerFactory);
-            await systemClient.Connect(Target?.NetId);
+            await systemClient.Connect(Target?.NetId, cancel);
             SystemId = await systemClient.GetSystemIdStringAsync(cancel);
         }
         catch (Exception ex) 
@@ -263,7 +263,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         try
         {
             AdsSystemClient systemClient = new(_LoggerFactory);
-            await systemClient.Connect(Target?.NetId);
+            await systemClient.Connect(Target?.NetId, cancel);
             VolumeNumber = await systemClient.GetVolumeNumberAsync(cancel);
         }
         catch (Exception ex)
@@ -278,7 +278,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         try
         {
             AdsSystemClient systemClient = new(_LoggerFactory);
-            await systemClient.Connect(Target?.NetId);
+            await systemClient.Connect(Target?.NetId, cancel);
             PlatformLevel = await systemClient.GetPlatformLevelAsync(cancel);
         }
         catch (Exception ex)
@@ -308,7 +308,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         try
         {
             AdsSystemClient systemClient = new(_LoggerFactory);
-            await systemClient.Connect(Target?.NetId);
+            await systemClient.Connect(Target?.NetId, cancel);
             var routerInfo = await systemClient.GetRouterStatusInfoAsync(cancel);
             RouterStatusInfo = routerInfo;
         }
@@ -328,7 +328,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         try
         {
             AdsRoutingClient routingClient = new(_LoggerFactory);
-            await routingClient.Connect(Target?.NetId);
+            await routingClient.Connect(Target?.NetId, cancel);
             var interfaces = await routingClient.GetNetworkInterfacesAsync(cancel);
 
             NetworkInterfaces.Clear();
@@ -432,7 +432,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
         public uint VolumeNumber { get; set; }
     }
 
-    public ObservableCollection<LicenseInfoViewModel> Licenses { get; } = new();
+    public ObservableCollection<LicenseInfoViewModel> Licenses { get; } = [];
 
     public async Task LoadLicensesAsync()
     {

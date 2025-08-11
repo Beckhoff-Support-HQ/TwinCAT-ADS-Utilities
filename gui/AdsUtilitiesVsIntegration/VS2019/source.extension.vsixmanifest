@@ -6,11 +6,11 @@
         <Description xml:space="preserve">ADS Utilities VS integration</Description>
         <Icon>Resources\icon.png</Icon>
         <PreviewImage>Resources\icon.png</PreviewImage>
-    </Metadata> 
+    </Metadata>
     <Installation>
-        <InstallationTarget Version="17.0" Id="Microsoft.VisualStudio.Pro" />
-        <InstallationTarget Version="17.0" Id="Microsoft.VisualStudio.Community" />
-        <InstallationTarget Version="17.0" Id="Microsoft.VisualStudio.Enterprise" />
+        <InstallationTarget Version="[16.0,17.0)" Id="Microsoft.VisualStudio.Pro" />
+        <InstallationTarget Version="[16.0,17.0)" Id="Microsoft.VisualStudio.Community" />
+        <InstallationTarget Version="[16.0,17.0)" Id="Microsoft.VisualStudio.Enterprise" />
 
     </Installation>
     <Dependencies>

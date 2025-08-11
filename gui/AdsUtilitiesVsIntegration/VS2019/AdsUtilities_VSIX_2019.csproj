@@ -107,33 +107,78 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Configuration.Abstractions.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Configuration.Binder.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Configuration.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.DependencyInjection.dll" />
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Configuration.Abstractions.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Configuration.Binder.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Configuration.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.DependencyInjection.Abstractions.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.DependencyInjection.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="WpfUiFiles\Microsoft.Extensions.Logging.Abstractions.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Logging.Configuration.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Logging.Console.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Logging.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Options.ConfigurationExtensions.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Options.dll" />
-    <Content Include="WpfUiFiles\Microsoft.Extensions.Primitives.dll" />
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Logging.Configuration.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Logging.Console.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Logging.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Options.ConfigurationExtensions.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Options.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\Microsoft.Extensions.Primitives.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="WpfUiFiles\System.ComponentModel.Composition.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="WpfUiFiles\System.Diagnostics.DiagnosticSource.dll" />
-    <Content Include="WpfUiFiles\System.IO.Pipelines.dll" />
+    <Content Include="WpfUiFiles\System.Diagnostics.DiagnosticSource.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\System.IO.Pipelines.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="WpfUiFiles\System.Reactive.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="WpfUiFiles\System.Text.Encodings.Web.dll" />
-    <Content Include="WpfUiFiles\System.Text.Json.dll" />
+    <Content Include="WpfUiFiles\System.Text.Encodings.Web.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="WpfUiFiles\System.Text.Json.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="WpfUiFiles\TwinCAT.Ads.Abstractions.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>

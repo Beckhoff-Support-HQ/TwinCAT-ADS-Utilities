@@ -15,16 +15,6 @@ public class AdsFileClientTests : IDisposable
         Directory.CreateDirectory(_testDirectory);
     }
 
-    public void Dispose()
-    {
-        _client.Dispose();
-        // Clean up the temporary directory and its contents
-        if (Directory.Exists(_testDirectory))
-        {
-            Directory.Delete(_testDirectory, true);
-        }
-    }
-
     [Fact]
     public async Task FileReadFullAsync_ShouldReturnByteArray_WhenFileExists()
     {

@@ -34,6 +34,7 @@ public class AdsRoutingClient : AdsClientBase
             netIdTarget,
             ipAddressTarget,
             routeName,
+            false,
             cancel);
 
         await AddRemoteRouteEntryByIpAsync(
@@ -58,6 +59,7 @@ public class AdsRoutingClient : AdsClientBase
             netIdTarget,
             ipAddressTarget,
             routeName,
+            false,
             cancel);
 
         await AddRemoteRouteEntryByIpAsync(
@@ -82,6 +84,7 @@ public class AdsRoutingClient : AdsClientBase
             netIdTarget,
             hostnameTarget,
             routeName,
+            false,
             cancel);
 
         await AddRemoteRouteEntryByNameAsync(
@@ -106,6 +109,7 @@ public class AdsRoutingClient : AdsClientBase
             netIdTarget,
             hostnameTarget,
             routeName,
+            false, 
             cancel);
 
         await AddRemoteRouteEntryByNameAsync(
@@ -140,8 +144,8 @@ public class AdsRoutingClient : AdsClientBase
         string netIdEntry,
         string ipAddressEntry,
         string routeNameEntry,
-        CancellationToken cancel = default, 
-        bool temporary = false)
+        bool temporary = false,
+        CancellationToken cancel = default)
     {
         WriteRequestHelper addRouteRequest = new WriteRequestHelper()
             .Add(netIdEntry.Split('.').Select(byte.Parse).ToArray())
@@ -172,8 +176,8 @@ public class AdsRoutingClient : AdsClientBase
         string netIdEntry, 
         string hostnameEntry, 
         string routeNameEntry, 
-        CancellationToken cancel = default,
-        bool temporary = false)
+        bool temporary = false,
+        CancellationToken cancel = default)
     {
         WriteRequestHelper addRouteRequest = new WriteRequestHelper()
             .Add(netIdEntry.Split('.').Select(byte.Parse).ToArray())
@@ -1246,7 +1250,7 @@ public class AdsRoutingClient : AdsClientBase
         }
         AdsSystemClient systemClient = new();
 
-        await systemClient.Connect(_netId.ToString());
+        await systemClient.Connect(_netId.ToString(), cancel);
 
         await systemClient.SetRegEntryAsync(
             @"Software\Beckhoff\TwinCAT3\System", 

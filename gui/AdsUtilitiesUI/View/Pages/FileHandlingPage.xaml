@@ -9,7 +9,7 @@
       Title="FileHandlingPage"
       x:Name="PageRoot">
 
-    <Grid Margin="5, 15">
+    <Grid Margin="5, 10">
         <Grid.ColumnDefinitions>
             <ColumnDefinition />
             <ColumnDefinition Width="Auto" />
@@ -34,7 +34,7 @@
             VerticalContentAlignment="Center"
             Text="{Binding Target.Name, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"/>
 
-        <Border Grid.Column="1" Margin="5" Background="LightGray" Width="1" Grid.RowSpan="2"/>
+        <Border Grid.Column="1" Margin="5 0" Background="LightGray" Width="1" Grid.RowSpan="2"/>
 
         <local:FileExplorerControl
             x:Name="FileExplorerLeft"

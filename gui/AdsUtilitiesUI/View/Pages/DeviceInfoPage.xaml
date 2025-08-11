@@ -217,7 +217,7 @@
                                 <TextBlock Text="ADS ports in use:" Padding="5"/>
                             </Border>
                             <Border Grid.Row="7" Grid.Column="1" BorderBrush="LightGray" BorderThickness="0,0,0,1">
-                                <TextBlock Text="{Binding RouterStatusInfo.registeredPorts}" Padding="5"/>
+                                <TextBlock Text="{Binding RouterStatusInfo.RegisteredPorts}" Padding="5"/>
                             </Border>
 
                             <!-- Row 9 - Drivers -->
@@ -225,7 +225,7 @@
                                 <TextBlock Text="Drivers:" Padding="5"/>
                             </Border>
                             <Border Grid.Row="8" Grid.Column="1" BorderBrush="LightGray" BorderThickness="0,0,0,1">
-                                <TextBlock Text="{Binding RouterStatusInfo.registeredDrivers}" Padding="5"/>
+                                <TextBlock Text="{Binding RouterStatusInfo.RegisteredDrivers}" Padding="5"/>
                             </Border>
 
                             <!-- Button to set rt tick -->

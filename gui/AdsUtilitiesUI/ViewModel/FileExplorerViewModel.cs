@@ -54,7 +54,7 @@ public class FileExplorerViewModel : INotifyPropertyChanged
         }
     }
 
-    private ObservableCollection<FileSystemItem> _rootItems = new ();
+    private ObservableCollection<FileSystemItem> _rootItems = [];
     public ObservableCollection<FileSystemItem> RootItems
     {
         get => _rootItems;
@@ -87,7 +87,7 @@ public class FileExplorerViewModel : INotifyPropertyChanged
 
         rootFolder.LoadChildren();
 
-        RootItems = new ObservableCollection<FileSystemItem> { rootFolder };
+        RootItems = [rootFolder];
         OnPropertyChanged(nameof(RootItems));
     }
 
@@ -164,7 +164,7 @@ public class FileSystemItem
     public BitmapImage Image { get; set; }
     public bool IsRoot { get; set; }
 
-    public ObservableCollection<FileSystemItem> Children { get; set; } = new ObservableCollection<FileSystemItem>();
+    public ObservableCollection<FileSystemItem> Children { get; set; } = [];
 
     public FileSystemItem(string DeviceNetID, string Name, bool IsDirectory, FileSystemItem ParentItem, string ParentDirectory, long FileSize, DateTime CreationTime, DateTime LastAccessTime, bool IsSystemFile, bool IsCompressed, bool IsRoot, bool IsReadOnly, bool IsEncrypted, string AlternativeName, DateTime LastModifyTime)
     {
@@ -205,7 +205,7 @@ public class FileSystemItem
 
     public static string ConvertByteSize(long byteSize)
     {
-        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
         double size = byteSize;
         int unitIndex = 0;
 
@@ -241,7 +241,7 @@ public class FileSystemItem
         await adsFileClient.Connect(DeviceNetID);
         await adsFileClient.StartProcessAsync(ParentDirectory + "/" + Name, ParentDirectory, string.Empty);
 
-        //await adsFileClient.StartProcessAsync(@"C:\Program Files\Notepad++\notepad++.exe", @"C:\Program Files\Notepad++", string.Empty);
+        //_Logger.LogInformation("Executing {exe}. Hint: This only works if no UAC is required.", Name);
     }
 
     public async Task LoadChildren()

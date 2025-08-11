@@ -16,42 +16,22 @@ public class LogMessage
     public LogLevel LogLevel { get; set; } // LogLevel for filtering
 }
 
-public class LoggerService : ILoggerProvider
+public class LoggerService(ObservableCollection<LogMessage> logMessages, Dispatcher dispatcher) : ILoggerProvider
 {
-    private readonly ObservableCollection<LogMessage> _logMessages;
-    private readonly Dispatcher _dispatcher;
-
-    public LoggerService(ObservableCollection<LogMessage> logMessages, Dispatcher dispatcher)
-    {
-        _logMessages = logMessages;
-        _dispatcher = dispatcher;
-    }
-
     public ILogger CreateLogger(string categoryName)
     {
-        return new GuiLogger(categoryName, _logMessages, _dispatcher);
+        return new GuiLogger(categoryName, logMessages, dispatcher);
     }
 
     public void Dispose()
     {
-        // Optional: Clean-up if needed
+
     }
 }
 
 
-public class GuiLogger : ILogger
+public class GuiLogger(string categoryName, ObservableCollection<LogMessage> logMessages, Dispatcher dispatcher) : ILogger
 {
-    private readonly string _categoryName;
-    private readonly ObservableCollection<LogMessage> _logMessages;
-    private readonly Dispatcher _dispatcher;
-
-    public GuiLogger(string categoryName, ObservableCollection<LogMessage> logMessages, Dispatcher dispatcher)
-    {
-        _categoryName = categoryName;
-        _logMessages = logMessages;
-        _dispatcher = dispatcher;
-    }
-
     public IDisposable BeginScope<TState>(TState state) => null!;
 
     public bool IsEnabled(LogLevel logLevel) => true; // Optional: Filter 
@@ -72,6 +52,6 @@ public class GuiLogger : ILogger
             LogLevel = logLevel,
         };
 
-        _dispatcher.Invoke(() => _logMessages.Add(logEntry));
+        dispatcher.Invoke(() => logMessages.Add(logEntry));
     }
 }

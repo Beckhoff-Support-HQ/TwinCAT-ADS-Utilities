@@ -287,11 +287,11 @@ internal readonly struct TriggerBroadcastPacket
 }
 public class IoDevice
 {
-    public string deviceName { get; set; }
-    public uint deviceId { get; set; }
-    public string netId { get; set; }
-    public uint boxCount { get; set; }
-    public List<IoBox> boxes { get; set; }
+    public string DeviceName { get; set; }
+    public uint DeviceId { get; set; }
+    public string NetId { get; set; }
+    public uint BoxCount { get; set; }
+    public List<IoBox> Boxes { get; set; }
 }
 
 public struct IoBox
@@ -305,6 +305,6 @@ public struct RouterStatusInfo
 {
     public uint RouterMemoryBytesReserved { get; set; }
     public uint RouterMemoryBytesAvailable { get; set; }
-    public uint registeredPorts { get; set; }
-    public uint registeredDrivers { get; set; }
+    public uint RegisteredPorts { get; set; }
+    public uint RegisteredDrivers { get; set; }
 }

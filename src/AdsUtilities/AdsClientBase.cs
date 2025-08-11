@@ -39,7 +39,7 @@ namespace AdsUtilities
                 throw new InvalidOperationException("NetId must be set before creating a session.");
             }
             var sessionSettings = SessionSettings.Default;
-            AmsAddress amsAddress = new AmsAddress(_netId, adsPort);
+            AmsAddress amsAddress = new (_netId, adsPort);
             return new AdsSession(amsAddress, sessionSettings, _loggerFactory);
         }
 

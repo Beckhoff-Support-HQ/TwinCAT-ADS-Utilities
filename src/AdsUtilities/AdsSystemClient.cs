@@ -1,8 +1,12 @@
 ﻿using Microsoft.Extensions.Logging;
+using System.Linq;
+using System.Net.Sockets;
+using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml;
 using TwinCAT.Ads;
+using TwinCAT.PlcOpen;
 
 namespace AdsUtilities;
 
@@ -46,15 +50,6 @@ public class AdsSystemClient : AdsClientBase
 
         wcRes.ThrowOnError();
     }
-
-
-
-    // ToDo: Redo this. There already is an ads command to enable remote control on CE. Using file access in not necessary
-    /*public static void EnableCeRemoteDisplay()
-    {
-        FileHandler.RenameFile(netId, @"\Hard Disk\RegFiles\CeRemoteDisplay_Disable.reg", @"\Hard Disk\RegFiles\CeRemoteDisplay_Enable.reg");
-        Reboot(netId, 0);
-    }*/
 
     public async Task SetRegEntryAsync(
         string subKey, 
@@ -253,25 +248,19 @@ public class AdsSystemClient : AdsClientBase
         {
             RouterMemoryBytesReserved = readRequest.ExtractUint32(),
             RouterMemoryBytesAvailable = readRequest.ExtractUint32(),
-            registeredPorts = readRequest.ExtractUint32(),
-            registeredDrivers = readRequest.ExtractUint32()
+            RegisteredPorts = readRequest.ExtractUint32(),
+            RegisteredDrivers = readRequest.ExtractUint32()
         };
         return routerInfo;
     }
 
-    public async Task<uint> GetAvailableRouterMemory(string netId, CancellationToken cancel = default)
+    public async Task<uint> GetAvailableRouterMemory(CancellationToken cancel = default)
     {
-        using var loggerFactory = LoggerFactory.Create(builder =>
-        {
-            builder.SetMinimumLevel(LogLevel.Information);
-            builder.AddConsole();
-        });
-
-        using AdsClient adsClient = new(loggerFactory.CreateLogger("AdsClient"));
-        adsClient.Connect(netId, 1);
+        using var session = CreateSession((int)AdsPorts.Router);
+        using var adsConnection = (AdsConnection)session.Connect();
 
         byte[] readBuffer = new byte[32];
-        var readRes = await adsClient.ReadAsync(1, 1, readBuffer, cancel);
+        var readRes = await adsConnection.ReadAsync(1, 1, readBuffer, cancel);
 
         readRes.ThrowOnError();
 
@@ -363,7 +352,7 @@ public class AdsSystemClient : AdsClientBase
         var licenses = new List<LicenseOnlineInfo>((int)licenseCount);
         for (int i = 0; i < licenseCount; i++)
         {
-            LicenseOnlineInfo licenseInfo = (LicenseOnlineInfo)StructConverter.MarshalToStructure< LicenseOnlineInfoMapped>(buffer[(i * structSize)..((i+1)*structSize)]);
+            LicenseOnlineInfo licenseInfo = (LicenseOnlineInfo)StructConverter.MarshalToStructure< LicenseOnlineInfoMapped>(buffer.AsMemory()[(i * structSize)..((i+1)*structSize)]);
             licenses.Add(licenseInfo);
         }
         adsConnection.Disconnect();
@@ -385,8 +374,133 @@ public class AdsSystemClient : AdsClientBase
 
         return Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
     }
+
+    public void RegisterEventListener(List<AdsLogEntry> adsLogs, Action<AdsLogEntry>? eventRaised)
+    {
+        //using var session = CreateSession((int)AmsPort.Logger);
+        var session = CreateSession(132);
+        var adsConnection = (AdsConnection)session.Connect();
+
+        adsConnection.AdsNotification += (sender, e) => OnNotification(e);
+
+        var settings = new NotificationSettings(AdsTransMode.Cyclic, 0, 0);
+        byte[] userData = new byte[16];
+        //uint handle = adsConnection.AddDeviceNotification(0x1, 0xffff, 1024, settings, null);   // ToDo: Clean up routine
+        uint handle = adsConnection.AddDeviceNotification(777, 0, 0x2000, settings, userData);   // ToDo: Clean up routine
+        Console.WriteLine("Port: " + adsConnection.Address.Port);
+        Console.WriteLine("Client port: " + adsConnection.ClientAddress.Port); // returns _session's port instead of _client's port
+        void OnNotification(AdsNotificationEventArgs e)
+        {
+            var adsEvent = ParseEvent(e);
+            if (adsEvent.Message == string.Empty)
+            {
+                return;
+            }
+            adsLogs.Add(adsEvent);
+            eventRaised?.Invoke(adsEvent);
+        }
+    }
+
+    private static AdsLogEntry ParseEvent(AdsNotificationEventArgs e)
+    {
+        static int FindPattern(byte[] data, byte[] pattern)
+        {
+            for (int i = 0; i <= data.Length - pattern.Length; i++)
+            {
+                bool match = true;
+                for (int j = 0; j < pattern.Length; j++)
+                {
+                    if (data[i + j] != pattern[j])
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) return i;
+            }
+            return -1;
+        }
+
+        byte[] eventData = e.Data.ToArray();
+        if (eventData.Length > 20)  // there are cyclic notifications with 16 byte data arrays - perhaps indications that event logger is running?
+        {
+            using AdsClient adsClient = new();
+            adsClient.Connect(132);
+            var readBuffer = new byte[0x810];
+            var writeBuffer = new byte[0x44];
+            var writeBufferList = new List<byte>();
+
+
+            string eventMessage = string.Empty;
+            byte[] pattern = new byte[] { 0x99, 0x00, 0x00, 0x00 };
+            int startIndex = FindPattern(eventData.ToArray(), pattern);
+            if (startIndex != -1)
+            {
+                int length = 24;
+                byte[] extracted = new byte[length];
+                Array.Copy(eventData.ToArray(), startIndex + pattern.Length, extracted, 0, length);
+
+                
+
+                writeBufferList.AddRange(new byte[] { 1, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x64, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x9, 0x4, 0, 0 });
+                writeBufferList.AddRange(extracted);
+                writeBufferList.AddRange(new byte[] { 0, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+                var res = adsClient.ReadWrite(500, 0, readBuffer, writeBufferList.ToArray());
+
+                int msgLen = readBuffer[24];
+
+                eventMessage = Encoding.UTF8.GetString(readBuffer[28..(28 + msgLen)]);
+
+
+            }
+            else
+            {
+                // parsing error
+            }
+
+            byte logLevel = eventData.ToArray()[36];   // 0: VErbose, 1:Info, 2:Warning, 3:Error, 4:Critical
+
+            AdsLogEntry log = new AdsLogEntry
+            {
+                TimeRaised = e.TimeStamp,   // There is a timestamp in the eventdata too but it is not transmitted when there are multiple events in a single cycle so were using the ADS timestamp
+                LogLevel = (AdsLogLevel)logLevel,
+                Message = eventMessage
+            };
+            return log;
+        }
+        AdsLogEntry logDefault = new AdsLogEntry
+        {
+            TimeRaised = e.TimeStamp,  
+            LogLevel = 0,
+            Message = string.Empty
+        };
+        return logDefault;
+
+    }
+}
+public enum AdsLogLevel
+{
+    Verbose = 0,
+    Info = 1,
+    Warning = 2,
+    Error = 3,
+    Critical = 4,
 }
 
+public struct AdsLogEntry
+{
+    public DateTimeOffset TimeRaised;
+    public AdsLogLevel LogLevel;
+    //public int AdsPort;
+    //public string Sender;
+    public string Message;
+}
 public enum RegEditTypeCode
 {
     REG_NONE,
@@ -402,3 +516,4 @@ public enum RegEditTypeCode
     REG_RESOURCE_REQUIREMENTS_LIST,
     REG_QWORD
 }
+
