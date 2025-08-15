@@ -49,13 +49,18 @@ namespace ConsoleApp1
 
             List<AdsLogEntry> logEntries = [];
 
-            adsSystemClient.RegisterEventListener(logEntries, PrintEventMessage);
+            using var sub = adsSystemClient.RegisterEventListener(PrintEventMessage);
+            
 
-            await Task.Delay(100_000);
+            await Task.Delay(1_000_000);
+
+            void PrintEventMessage(AdsLogEntry log)
+            {
+                Console.WriteLine(log.ToString());
+                logEntries.Add(log);
+
+            }
         }
-        static void PrintEventMessage(AdsLogEntry log)
-        {
-            Console.WriteLine($"{log.TimeRaised}: {log.LogLevel} - {log.Message}");
-        }
+        
     }
 }

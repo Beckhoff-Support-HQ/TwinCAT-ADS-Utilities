@@ -1,4 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Net.Sockets;
 using System.Reflection.Metadata;
@@ -375,113 +377,223 @@ public class AdsSystemClient : AdsClientBase
         return Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
     }
 
-    public void RegisterEventListener(List<AdsLogEntry> adsLogs, Action<AdsLogEntry>? eventRaised)
+
+
+
+
+    // Action<T> --> Progress<T> for UI-Thread/SyncContext 
+    public IDisposable RegisterEventListener(Action<AdsLogEntry> onEvent)
     {
-        //using var session = CreateSession((int)AmsPort.Logger);
-        var session = CreateSession(132);
-        var adsConnection = (AdsConnection)session.Connect();
+        if (onEvent is null) throw new ArgumentNullException(nameof(onEvent));
 
-        adsConnection.AdsNotification += (sender, e) => OnNotification(e);
-
-        var settings = new NotificationSettings(AdsTransMode.Cyclic, 0, 0);
-        byte[] userData = new byte[16];
-        //uint handle = adsConnection.AddDeviceNotification(0x1, 0xffff, 1024, settings, null);   // ToDo: Clean up routine
-        uint handle = adsConnection.AddDeviceNotification(777, 0, 0x2000, settings, userData);   // ToDo: Clean up routine
-        Console.WriteLine("Port: " + adsConnection.Address.Port);
-        Console.WriteLine("Client port: " + adsConnection.ClientAddress.Port); // returns _session's port instead of _client's port
-        void OnNotification(AdsNotificationEventArgs e)
-        {
-            var adsEvent = ParseEvent(e);
-            if (adsEvent.Message == string.Empty)
-            {
-                return;
-            }
-            adsLogs.Add(adsEvent);
-            eventRaised?.Invoke(adsEvent);
-        }
+        return RegisterEventListener(new Progress<AdsLogEntry>(onEvent));
     }
 
-    private static AdsLogEntry ParseEvent(AdsNotificationEventArgs e)
+    // Actual API: IProgress<T>
+    public IDisposable RegisterEventListener(IProgress<AdsLogEntry> progress)
     {
-        static int FindPattern(byte[] data, byte[] pattern)
+        if (_netId is null) throw new InvalidOperationException("NetId must be set before creating a session.");
+
+        return AdsEventSubscription.Create(_netId, progress, _loggerFactory);
+    }
+    // ----------------- Internal Subscription Implementation -----------------
+    private sealed class AdsEventSubscription : IDisposable
+    {
+
+        private static readonly NotificationSettings Settings =
+            new(AdsTransMode.Cyclic, cycleTime: 0, maxDelay: 0);
+
+        // Parser-Konstanten 
+        private const int CyclicIgnoreLengthThreshold = 20;
+        private static readonly byte[] PatternSender = new byte[] { 0x20, 0x50, 0x08 };
+
+        private readonly IAdsSession _session;
+        private readonly AdsConnection _conn;
+        private readonly uint _handle;
+        private readonly EventHandler<AdsNotificationEventArgs> _onNotify;
+        private readonly IProgress<AdsLogEntry> _progress;
+
+        private readonly AdsClient _adsClient;
+
+        // Decoupling Producer/Consumer
+        private readonly BlockingCollection<AdsNotificationEventArgs> _queue = new();
+        private readonly CancellationTokenSource _cts = new();
+        private readonly Task _workerTask;
+
+        private bool _disposed;
+        private readonly object _disposeLock = new();
+
+        private AdsEventSubscription(
+            IAdsSession session,
+            AdsConnection conn,
+            uint handle,
+            IProgress<AdsLogEntry> progress,
+            AdsClient adsClient)
+        {
+            _session = session;
+            _conn = conn;
+            _handle = handle;
+            _progress = progress;
+            _adsClient = adsClient;
+
+            _onNotify = (s, e) =>
+            {
+                if (!_queue.IsAddingCompleted) _queue.Add(e);
+            };
+            _conn.AdsNotification += _onNotify;
+
+            _workerTask = Task.Run(() => WorkerLoop(_cts.Token), _cts.Token);
+        }
+
+        public static AdsEventSubscription Create(  
+            AmsNetId netId,
+            IProgress<AdsLogEntry> progress,
+            ILoggerFactory? loggerFactory)
+        {
+            // Connect
+            var sessionSettings = SessionSettings.Default;
+            AmsAddress amsAddress = new(netId, (int) AmsPort.EventLogPublisher);
+            var session = new AdsSession(amsAddress, sessionSettings, loggerFactory);
+            var conn = (AdsConnection)session.Connect();
+
+            // Add Device-Notification on events
+            var handle = conn.AddDeviceNotification(777, 0, 0x2000, Settings, new byte[16]);
+
+            // AdsClient only for den Worker-Thread
+            var logger = loggerFactory?.CreateLogger<AdsClient>() ?? NullLogger<AdsClient>.Instance;
+            var adsClient = new AdsClient(logger);
+            adsClient.Connect(netId, AmsPort.EventLogPublisher);
+
+            return new AdsEventSubscription(session, conn, handle, progress, adsClient);
+        }
+
+        private void WorkerLoop(CancellationToken ct)
+        {
+            try
+            {
+                foreach (var e in _queue.GetConsumingEnumerable(ct))
+                {
+                    if (TryParseEvent(e, out var entry))
+                        _progress.Report(entry);
+                }
+            }
+            catch (OperationCanceledException) { /* Disposing */ }
+            catch { /* TODO: Logging */ }
+        }
+
+
+        private bool TryParseEvent(AdsNotificationEventArgs e, out AdsLogEntry entry)
+        {
+            entry = default;
+            var data = e.Data.ToArray();
+
+            if (data.Length <= CyclicIgnoreLengthThreshold)
+                return false; // ignore cyclic notifications
+
+            try
+            {
+                // --- extrahierte 24 Bytes ab Offset 12 ---
+                const int startIndex = 12;
+                const int length = 24;
+                if (data.Length < startIndex + length) return false;
+
+                var eventAddr = new byte[length];
+                Array.Copy(data, startIndex, eventAddr, 0, length);
+
+                var writeBufferList = new List<byte>(0x100);
+                writeBufferList.AddRange(new byte[] { 1, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x64, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x9, 0x4, 0, 0 });
+                writeBufferList.AddRange(eventAddr);
+                writeBufferList.AddRange(new byte[] { 0, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0 });
+                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+                var readBuffer = new byte[0x810];
+                _adsClient.ReadWrite(500, 0, readBuffer, writeBufferList.ToArray());
+
+                if (readBuffer.Length < 28) return false;
+
+                int msgLen = readBuffer[24];
+                int msgStart = 28;
+                int msgEnd = msgStart + msgLen;
+                if (msgLen <= 0 || msgEnd > readBuffer.Length) return false;
+
+                string eventMessage = Encoding.UTF8.GetString(readBuffer, msgStart, msgLen);
+                if (string.IsNullOrEmpty(eventMessage)) return false;
+
+                // Sender anhand Pattern suchen, bis zum nächsten 0-Byte lesen
+                string sender = string.Empty;
+                int p = FindPattern(data, PatternSender);
+                if (p != -1)
+                {
+                    int s = p + PatternSender.Length;
+                    if (s < data.Length)
+                    {
+                        int zero = Array.IndexOf<byte>(data, 0, s);
+                        int end = (zero >= 0) ? zero : data.Length;
+                        if (end > s) sender = Encoding.UTF8.GetString(data, s, end - s);
+                    }
+                }
+
+                byte lvl = (data.Length > 36) ? data[36] : (byte)AdsLogLevel.Info;
+                var logLevel = (AdsLogLevel)Math.Clamp(lvl, (byte)AdsLogLevel.Verbose, (byte)AdsLogLevel.Critical);
+
+                entry = new AdsLogEntry
+                {
+                    TimeRaised = e.TimeStamp,
+                    LogLevel = logLevel,
+                    Sender = sender,
+                    Message = eventMessage
+                };
+                return true;
+            }
+            catch
+            {
+                // Parsing error - TODO: Logging
+                return false;
+            }
+        }
+
+        private static int FindPattern(byte[] data, byte[] pattern)
         {
             for (int i = 0; i <= data.Length - pattern.Length; i++)
             {
                 bool match = true;
                 for (int j = 0; j < pattern.Length; j++)
                 {
-                    if (data[i + j] != pattern[j])
-                    {
-                        match = false;
-                        break;
-                    }
+                    if (data[i + j] != pattern[j]) { match = false; break; }
                 }
                 if (match) return i;
             }
             return -1;
         }
 
-        byte[] eventData = e.Data.ToArray();
-        if (eventData.Length > 20)  // there are cyclic notifications with 16 byte data arrays - perhaps indications that event logger is running?
+        public void Dispose()
         {
-            using AdsClient adsClient = new();
-            adsClient.Connect(132);
-            var readBuffer = new byte[0x810];
-            var writeBuffer = new byte[0x44];
-            var writeBufferList = new List<byte>();
-
-
-            string eventMessage = string.Empty;
-            byte[] pattern = new byte[] { 0x99, 0x00, 0x00, 0x00 };
-            int startIndex = FindPattern(eventData.ToArray(), pattern);
-            if (startIndex != -1)
+            lock (_disposeLock)
             {
-                int length = 24;
-                byte[] extracted = new byte[length];
-                Array.Copy(eventData.ToArray(), startIndex + pattern.Length, extracted, 0, length);
+                if (_disposed) return;
+                _disposed = true;
 
-                
+                // stop Worker 
+                _cts.Cancel();
+                _queue.CompleteAdding();
+                try { _workerTask.Wait(TimeSpan.FromSeconds(2)); } catch { /* ignore */ }
 
-                writeBufferList.AddRange(new byte[] { 1, 0, 0, 0 });
-                writeBufferList.AddRange(new byte[] { 0x64, 0, 0, 0 });
-                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0 });
-                writeBufferList.AddRange(new byte[] { 0x9, 0x4, 0, 0 });
-                writeBufferList.AddRange(extracted);
-                writeBufferList.AddRange(new byte[] { 0, 0, 0, 0 });
-                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0 });
-                writeBufferList.AddRange(new byte[] { 0x34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                // Disposing routine
+                try { _conn.AdsNotification -= _onNotify; } catch { }
+                try { _conn.DeleteDeviceNotification(_handle); } catch { }
+                try { _conn.Disconnect(); } catch { }
+                try { _conn.Dispose(); } catch { }
+                try { _session.Disconnect(); } catch { }
+                try { _adsClient.Dispose(); } catch { }
 
-                var res = adsClient.ReadWrite(500, 0, readBuffer, writeBufferList.ToArray());
-
-                int msgLen = readBuffer[24];
-
-                eventMessage = Encoding.UTF8.GetString(readBuffer[28..(28 + msgLen)]);
-
-
+                _cts.Dispose();
+                _queue.Dispose();
             }
-            else
-            {
-                // parsing error
-            }
-
-            byte logLevel = eventData.ToArray()[36];   // 0: VErbose, 1:Info, 2:Warning, 3:Error, 4:Critical
-
-            AdsLogEntry log = new AdsLogEntry
-            {
-                TimeRaised = e.TimeStamp,   // There is a timestamp in the eventdata too but it is not transmitted when there are multiple events in a single cycle so were using the ADS timestamp
-                LogLevel = (AdsLogLevel)logLevel,
-                Message = eventMessage
-            };
-            return log;
         }
-        AdsLogEntry logDefault = new AdsLogEntry
-        {
-            TimeRaised = e.TimeStamp,  
-            LogLevel = 0,
-            Message = string.Empty
-        };
-        return logDefault;
-
     }
 }
 public enum AdsLogLevel
@@ -493,14 +605,17 @@ public enum AdsLogLevel
     Critical = 4,
 }
 
-public struct AdsLogEntry
+public readonly record struct AdsLogEntry
 {
-    public DateTimeOffset TimeRaised;
-    public AdsLogLevel LogLevel;
-    //public int AdsPort;
-    //public string Sender;
-    public string Message;
+    public DateTimeOffset TimeRaised { get; init; }
+    public AdsLogLevel LogLevel { get; init; }
+    public string Sender { get; init; }
+    public string Message { get; init; }
+
+    public override string ToString() =>
+        $"{LogLevel} {TimeRaised:yyyy/MM/dd HH:mm:ss:ff} | '{Sender}': {Message}";
 }
+
 public enum RegEditTypeCode
 {
     REG_NONE,
