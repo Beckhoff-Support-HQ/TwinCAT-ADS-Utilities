@@ -32,16 +32,7 @@ public partial class MainWindow : Window
 
         DataContext = _viewModel;
 
-        _viewModel.LogMessages.CollectionChanged += (s, e) =>
-        {
-            if (LogListBox.Items.Count > 0)
-            {
-                Dispatcher.BeginInvoke(() =>
-                {
-                    LogListBox.ScrollIntoView(LogListBox.Items[^1]);    // Auto scroll
-                }, System.Windows.Threading.DispatcherPriority.Background);
-            }
-        };
+
     }
 
     private void PowerButton_Click(object sender, RoutedEventArgs e)

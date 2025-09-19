@@ -656,7 +656,7 @@ public class AdsRoutingClient : AdsClientBase
                 break;
 
             string netIdRd = routeInfo.ExtractNetId();
-            byte[] unknown = routeInfo.ExtractBytes(38);    // ToDo: Test what these parameters do
+            byte[] unknown = routeInfo.ExtractBytes(38);
             string ip = routeInfo.ExtractString();
             string name = routeInfo.ExtractString();
 
@@ -717,7 +717,7 @@ public class AdsRoutingClient : AdsClientBase
 
         rRes.ThrowOnError();
 
-        uint bytesPerNic = BitConverter.ToUInt32(nicBfr, 0); //640;                        // Info on every NIC takes 640 bytes. There might be a data field in the byte array that contains that size. For now it's statically defined
+        uint bytesPerNic = BitConverter.ToUInt32(nicBfr, 0); 
         uint numOfNics = nicBfrSize / bytesPerNic;
 
         ConcurrentBag<NetworkInterfaceInfo> nicBag = new();
@@ -1230,38 +1230,6 @@ public class AdsRoutingClient : AdsClientBase
                 if (data[index + i] != header[i]) return false;
             }
             return true;
-        }
-    }
-
-
-
-    public async Task ChangeNetIdOnWindowsAsync(string netIdNew, bool rebootNow = false, CancellationToken cancel = default)
-    {
-        string[] partsNetId = netIdNew.Split('.');
-        byte[] bytesNetId = new byte[partsNetId.Length];
-
-        for (int i = 0; i < partsNetId.Length; i++)
-        {
-            if (!byte.TryParse(partsNetId[i], out bytesNetId[i]))
-            {
-                _logger?.LogError("NetId contains invalid value.");
-                return;
-            }
-        }
-        AdsSystemClient systemClient = new();
-
-        await systemClient.Connect(_netId.ToString(), cancel);
-
-        await systemClient.SetRegEntryAsync(
-            @"Software\Beckhoff\TwinCAT3\System", 
-            "RequestedAmsNetId", 
-            RegEditTypeCode.REG_BINARY, 
-            bytesNetId, 
-            cancel);
-
-        if (rebootNow)
-        {
-            await systemClient.RebootAsync(0, cancel);
         }
     }
 }

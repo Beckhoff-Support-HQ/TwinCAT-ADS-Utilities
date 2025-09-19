@@ -308,3 +308,40 @@ public struct RouterStatusInfo
     public uint RegisteredPorts { get; set; }
     public uint RegisteredDrivers { get; set; }
 }
+
+public enum AdsLogLevel
+{
+    Verbose = 0,
+    Info = 1,
+    Warning = 2,
+    Error = 3,
+    Critical = 4,
+}
+
+public readonly record struct AdsLogEntry
+{
+    public DateTimeOffset TimeRaised { get; init; }
+    public AdsLogLevel LogLevel { get; init; }
+    public string Sender { get; init; }
+    public string Message { get; init; }
+
+    public override string ToString() =>
+        $"{LogLevel} {TimeRaised:yyyy/MM/dd HH:mm:ss:ff} | '{Sender}': {Message}";
+}
+
+public enum RegEditTypeCode
+{
+    REG_NONE,
+    REG_SZ,
+    REG_EXPAND_SZ,
+    REG_BINARY,
+    REG_DWORD,
+    REG_DWORD_BIG_ENDIAN,
+    REG_LINK,
+    REG_MULTI_SZ,
+    REG_RESOURCE_LIST,
+    REG_FULL_RESOURCE_DESCRIPTOR,
+    REG_RESOURCE_REQUIREMENTS_LIST,
+    REG_QWORD
+}
+

@@ -30,5 +30,11 @@ namespace AdsUtilitiesUI.Views.Pages
             NetIdChangeMenu.IsOpen = true;
         }
 
+        private void FilterEvents_Click(object sender, RoutedEventArgs e)
+        {
+            FilterEventsMenu.PlacementTarget = FilterButton;
+            FilterEventsMenu.IsOpen = true;
+        }
+
     }
 }

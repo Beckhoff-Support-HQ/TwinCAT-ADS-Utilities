@@ -16,42 +16,44 @@ public class LogMessage
     public LogLevel LogLevel { get; set; } // LogLevel for filtering
 }
 
-public class LoggerService(ObservableCollection<LogMessage> logMessages, Dispatcher dispatcher) : ILoggerProvider
+internal class LoggerService : ILoggerProvider
 {
-    public ILogger CreateLogger(string categoryName)
+    private readonly MainWindowViewModel _vm;
+
+    public LoggerService(MainWindowViewModel vm)
     {
-        return new GuiLogger(categoryName, logMessages, dispatcher);
+        _vm = vm;
     }
 
-    public void Dispose()
-    {
+    public ILogger CreateLogger(string categoryName) => new GuiLogger(_vm);
 
-    }
+    public void Dispose() { }
 }
 
-
-public class GuiLogger(string categoryName, ObservableCollection<LogMessage> logMessages, Dispatcher dispatcher) : ILogger
+internal class GuiLogger : ILogger
 {
-    public IDisposable BeginScope<TState>(TState state) => null!;
+    private readonly MainWindowViewModel _vm;
 
-    public bool IsEnabled(LogLevel logLevel) => true; // Optional: Filter 
+    public GuiLogger(MainWindowViewModel vm)
+    {
+        _vm = vm;
+    }
+
+    public IDisposable BeginScope<TState>(TState state) => null!;
+    public bool IsEnabled(LogLevel logLevel) => true;
 
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
-                            Exception? exception, Func<TState, Exception?, string> formatter)
+        Exception? exception, Func<TState, Exception?, string> formatter)
     {
-        if (!IsEnabled(logLevel)) return;
-
-        var message = formatter(state, exception);
+        var msg = formatter(state, exception);
         if (exception != null)
-            message += $" → {exception.Message}";
+            msg += $" → {exception.Message}";
 
-        var logEntry = new LogMessage
+        _vm.AddLog(new LogMessage
         {
             Timestamp = DateTime.Now,
-            Message = message,
-            LogLevel = logLevel,
-        };
-
-        dispatcher.Invoke(() => logMessages.Add(logEntry));
+            Message = msg,
+            LogLevel = logLevel
+        });
     }
 }

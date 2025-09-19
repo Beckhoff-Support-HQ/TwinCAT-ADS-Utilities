@@ -108,6 +108,33 @@ public class AdsSystemClient : AdsClientBase
         return readBuffer;
     }
 
+    public async Task ChangeNetIdOnWindowsAsync(string netIdNew, bool rebootNow = false, CancellationToken cancel = default)
+    {
+        string[] partsNetId = netIdNew.Split('.');
+        byte[] bytesNetId = new byte[partsNetId.Length];
+
+        for (int i = 0; i < partsNetId.Length; i++)
+        {
+            if (!byte.TryParse(partsNetId[i], out bytesNetId[i]))
+            {
+                _logger?.LogError("NetId contains invalid value.");
+                return;
+            }
+        }
+
+        await SetRegEntryAsync(
+            @"Software\Beckhoff\TwinCAT3\System",
+            "RequestedAmsNetId",
+            RegEditTypeCode.REG_BINARY,
+            bytesNetId,
+            cancel);
+
+        if (rebootNow)
+        {
+            await RebootAsync(0, cancel);
+        }
+    }
+
     public async Task<SystemInfo> GetSystemInfoAsync(CancellationToken cancel = default)
     {
         byte[] rdBfr = new byte[2048];
@@ -596,39 +623,3 @@ public class AdsSystemClient : AdsClientBase
         }
     }
 }
-public enum AdsLogLevel
-{
-    Verbose = 0,
-    Info = 1,
-    Warning = 2,
-    Error = 3,
-    Critical = 4,
-}
-
-public readonly record struct AdsLogEntry
-{
-    public DateTimeOffset TimeRaised { get; init; }
-    public AdsLogLevel LogLevel { get; init; }
-    public string Sender { get; init; }
-    public string Message { get; init; }
-
-    public override string ToString() =>
-        $"{LogLevel} {TimeRaised:yyyy/MM/dd HH:mm:ss:ff} | '{Sender}': {Message}";
-}
-
-public enum RegEditTypeCode
-{
-    REG_NONE,
-    REG_SZ,
-    REG_EXPAND_SZ,
-    REG_BINARY,
-    REG_DWORD,
-    REG_DWORD_BIG_ENDIAN,
-    REG_LINK,
-    REG_MULTI_SZ,
-    REG_RESOURCE_LIST,
-    REG_FULL_RESOURCE_DESCRIPTOR,
-    REG_RESOURCE_REQUIREMENTS_LIST,
-    REG_QWORD
-}
-

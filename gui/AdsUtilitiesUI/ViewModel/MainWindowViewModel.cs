@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Windows.Input;
 using TwinCAT.Ads;
 using System.Windows.Threading;
+using System.ComponentModel;
 
 
 namespace AdsUtilitiesUI;
@@ -20,8 +21,8 @@ class MainWindowViewModel : ViewModelBase
     public TargetService _targetService { get; }
 
     private ILogger _logger;
-
     private ILoggerFactory _LoggerFactory;
+    private readonly Queue<LogMessage> _ringBuffer = new();
 
     public ObservableCollection<LogMessage> LogMessages { get; set; }
 
@@ -35,8 +36,44 @@ class MainWindowViewModel : ViewModelBase
         }
     }
 
+    public class LogLevelFilter : INotifyPropertyChanged
+    {
+        public LogLevel Level { get; }
+        private bool _isEnabled;
+
+        public bool IsEnabled
+        {
+            get => _isEnabled;
+            set
+            {
+                if (_isEnabled != value)
+                {
+                    _isEnabled = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEnabled)));
+                }
+            }
+        }
+
+        public LogLevelFilter(LogLevel level, bool isEnabled)
+        {
+            Level = level;
+            _isEnabled = isEnabled;
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
+
+    public ObservableCollection<LogLevelFilter> LogLevelFilters { get; } = new();
+
+    public ICommand ClearCommand { get; }
+    public ICommand ToggleFilterCommand { get; }
+
+    private readonly Dispatcher _dispatcher;
+
     public MainWindowViewModel() 
     {
+        _dispatcher = Dispatcher.CurrentDispatcher;
+
         _targetService = new TargetService();
         _targetService.OnTargetChanged += TargetService_OnTargetChanged;
 
@@ -45,15 +82,24 @@ class MainWindowViewModel : ViewModelBase
         ShutdownCommand = new(Shutdown);
         RebootCommand = new(Reboot);
 
+        // Logger-Setup
         LogMessages = new();
         _LoggerFactory = LoggerFactory.Create(builder =>
         {
             builder
-                .SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Information)
-                .AddProvider(new LoggerService(LogMessages, Dispatcher.CurrentDispatcher));
+                .SetMinimumLevel(LogLevel.Trace)
+                .AddProvider(new LoggerService(this));
         });
-
         _logger = _LoggerFactory.CreateLogger<MainWindowViewModel>();
+
+        ClearCommand = new RelayCommand(_ => ClearLogs());
+
+        LogLevelFilters.Add(new LogLevelFilter(LogLevel.Trace, false));
+        LogLevelFilters.Add(new LogLevelFilter(LogLevel.Debug, false));
+        LogLevelFilters.Add(new LogLevelFilter(LogLevel.Information, false));
+        LogLevelFilters.Add(new LogLevelFilter(LogLevel.Warning, true));
+        LogLevelFilters.Add(new LogLevelFilter(LogLevel.Error, true));
+        LogLevelFilters.Add(new LogLevelFilter(LogLevel.Critical, true));
 
         Tabs = new ObservableCollection<TabViewModel>
         {
@@ -64,7 +110,29 @@ class MainWindowViewModel : ViewModelBase
         SelectedTab = Tabs[0];
     }
 
+    public void AddLog(LogMessage msg)
+    {
+        // Filter: nur hinzufügen, wenn aktiviert
+        if (!LogLevelFilters.First(f => f.Level == msg.LogLevel).IsEnabled)
+            return;
 
+        _dispatcher.BeginInvoke(() =>
+        {
+            _ringBuffer.Enqueue(msg);
+            if (_ringBuffer.Count > 500)
+                _ringBuffer.Dequeue();
+
+            LogMessages.Clear();
+            foreach (var log in _ringBuffer)
+                LogMessages.Add(log);
+        });
+    }
+
+    private void ClearLogs()
+    {
+        _ringBuffer.Clear();
+        LogMessages.Clear();
+    }
     private void TargetService_OnTargetChanged(object sender, StaticRouteStatus newTarget)
     {
         OnPropertyChanged(nameof(_targetService.CurrentTarget));

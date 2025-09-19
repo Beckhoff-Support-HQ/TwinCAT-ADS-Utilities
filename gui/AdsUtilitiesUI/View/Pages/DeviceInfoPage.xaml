@@ -339,7 +339,7 @@
                     </ItemsControl>
                 </ScrollViewer>
             </TabItem>
-            <TabItem Header="Manage Routes">
+            <TabItem Header="ADS Routes">
                 <ScrollViewer>
                     <ItemsControl ItemsSource="{Binding RouteEntries}">
                         <ItemsControl.ItemTemplate>
@@ -424,6 +424,95 @@
                         </DataGrid.Columns>
                     </DataGrid>
                 </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Event Logger">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Toolbar -->
+                    <StackPanel Orientation="Horizontal">
+                        <!-- Toggle: Register Listener -->
+                        <ToggleButton Content="Register Listener"
+                          IsChecked="{Binding IsListening, Mode=TwoWay}"
+                          ToolTip="Start/Stop Event Listener"
+                          Padding="10,4"
+                          Margin="0 0 5 0"/>
+
+                        <!-- Clear -->
+                        <Button Content="Clear"
+                          Padding="10,4"
+                          Margin="0 0 5 0"
+                    Command="{Binding ClearCommand}" />
+
+                        <Button x:Name="FilterButton"
+                            Content="Filter"
+                            Padding="10,4"
+                            Margin="0 0 5 0"
+                            Click="FilterEvents_Click">
+                            
+                            <Button.ContextMenu>
+                                <ContextMenu x:Name="FilterEventsMenu">
+                                    <MenuItem Header="Verbose"
+                                      IsCheckable="True"
+                                      IsChecked="{Binding ShowVerbose, Mode=TwoWay}"
+                                      Command="{Binding ReapplyFilterCommand}" />
+                                    <MenuItem Header="Info"
+                                      IsCheckable="True"
+                                      IsChecked="{Binding ShowInfo, Mode=TwoWay}"
+                                      Command="{Binding ReapplyFilterCommand}" />
+                                    <MenuItem Header="Warning"
+                                      IsCheckable="True"
+                                      IsChecked="{Binding ShowWarning, Mode=TwoWay}"
+                                      Command="{Binding ReapplyFilterCommand}" />
+                                    <MenuItem Header="Error"
+                                      IsCheckable="True"
+                                      IsChecked="{Binding ShowError, Mode=TwoWay}"
+                                      Command="{Binding ReapplyFilterCommand}" />
+                                    <MenuItem Header="Critical"
+                                      IsCheckable="True"
+                                      IsChecked="{Binding ShowCritical, Mode=TwoWay}"
+                                      Command="{Binding ReapplyFilterCommand}" />
+                                    <Separator/>
+                                    <MenuItem Header="Show all"
+                                      Command="{Binding EnableAllLevelsCommand}" />
+                                    <MenuItem Header="Hide all"
+                                      Command="{Binding DisableAllLevelsCommand}" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Tabelle -->
+                    <DataGrid Grid.Row="1"
+                  ItemsSource="{Binding LogsView}"
+                  VerticalScrollBarVisibility="Auto"
+                  GridLinesVisibility="None"
+                  CanUserSortColumns="False"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  CanUserAddRows="False"
+                  HeadersVisibility="Column"
+                  SelectionMode="Single"
+                  Margin="0,8,0,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Zeit"
+                                    Binding="{Binding TimeRaised, StringFormat=\{0:yyyy/MM/dd HH:mm:ss:ff\}}"
+                                    Width="180" />
+                            <DataGridTextColumn Header="Level"
+                                    Binding="{Binding LogLevel}"
+                                    Width="100" />
+                            <DataGridTextColumn Header="Sender"
+                                    Binding="{Binding Sender}"
+                                    Width="200" />
+                            <DataGridTextColumn Header="Message"
+                                    Binding="{Binding Message}"
+                                    Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
             </TabItem>
         </TabControl>
     </Grid>

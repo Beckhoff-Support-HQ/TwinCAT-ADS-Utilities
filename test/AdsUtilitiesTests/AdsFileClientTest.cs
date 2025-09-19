@@ -1,6 +1,8 @@
+using TwinCAT.Ads;
+
 namespace AdsUtilitiesTests;
 
-public class AdsFileClientTests : IDisposable
+public class AdsFileClientTests 
 {
     private readonly AdsFileClient _client;
     private readonly string _testDirectory;
@@ -8,7 +10,7 @@ public class AdsFileClientTests : IDisposable
     public AdsFileClientTests()
     {
         _client = new AdsFileClient();
-        _client.Connect().Wait();
+        _client.Connect(AmsNetId.Local.ToString()).Wait();
 
         // Create a temporary directory for the tests
         _testDirectory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());

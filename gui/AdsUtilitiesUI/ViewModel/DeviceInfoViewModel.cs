@@ -12,6 +12,8 @@ using System.Xml.Linq;
 using TwinCAT.Ads;
 using System.Windows;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel;
+using System.Windows.Data;
 
 namespace AdsUtilitiesUI;
 
@@ -176,6 +178,15 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
         NetworkInterfaces = [];
         RouteEntries = [];
+
+
+        // Logs View
+        LogsView = CollectionViewSource.GetDefaultView(Logs);
+        LogsView.Filter = LogFilter;
+        ClearCommand = new RelayCommand(Clear);
+        ReapplyFilterCommand = new RelayCommand(ApplyFilter);
+        EnableAllLevelsCommand = new RelayCommand(() => SetAllLevels(true));
+        DisableAllLevelsCommand = new RelayCommand(() => SetAllLevels(false));
     }
 
     public async Task UpdateDeviceInfo()
@@ -191,6 +202,10 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
             UpdatePlatformLevel(),
             ReloadRouteEntries()
         );
+
+        IsListening = false;
+        StopListening();
+        Clear();
 
         _ = Task.Run(LoadLicensesAsync);
         NetIdPending = Target.NetId;
@@ -527,11 +542,8 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
 
         bool editRouteEntry = result == MessageBoxResult.Yes;
 
-        AdsRoutingClient routingClient = new(_LoggerFactory);
 
-        await routingClient.Connect(Target?.NetId);
-
-        await routingClient.ChangeNetIdOnWindowsAsync(NetIdPending, true);
+        await systemClient.ChangeNetIdOnWindowsAsync(NetIdPending, true);
 
         if(editRouteEntry)
         {
@@ -561,11 +573,7 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
             return;
         }
 
-        AdsRoutingClient routingClient = new(_LoggerFactory);
-
-        await routingClient.Connect(Target?.NetId);
-
-        await routingClient.ChangeNetIdOnWindowsAsync(NetIdPending, false);
+        await systemClient.ChangeNetIdOnWindowsAsync(NetIdPending, false);
     }
 
     private async Task ExecuteSetTick()
@@ -603,6 +611,148 @@ public class DeviceInfoViewModel : ViewModelTargetAccessPage
             return;
         }
         _logger.LogInformation("Set tick successfully. Please reboot target");
+    }
+
+
+
+    // Event Logging -------------------------------------------------------------
+
+    public ObservableCollection<AdsLogEntry> Logs { get; } = new();
+    public ICollectionView LogsView { get; }
+
+    private bool _isListening;
+    public bool IsListening
+    {
+        get => _isListening;
+        set
+        {
+            if (_isListening == value) return;
+            _isListening = value;
+            OnPropertyChanged(); 
+            _ = ToggleListeningAsync(_isListening);
+        }
+    }
+
+    // Filter-Flags
+    public bool ShowVerbose { get => _showVerbose; set { _showVerbose = value; OnPropertyChanged(); ApplyFilter(); } }
+    public bool ShowInfo { get => _showInfo; set { _showInfo = value; OnPropertyChanged(); ApplyFilter(); } }
+    public bool ShowWarning { get => _showWarning; set { _showWarning = value; OnPropertyChanged(); ApplyFilter(); } }
+    public bool ShowError { get => _showError; set { _showError = value; OnPropertyChanged(); ApplyFilter(); } }
+    public bool ShowCritical { get => _showCritical; set { _showCritical = value; OnPropertyChanged(); ApplyFilter(); } }
+
+    private bool _showVerbose = true, _showInfo = true, _showWarning = true, _showError = true, _showCritical = true;
+
+    // Commands
+    public ICommand ClearCommand { get; }
+    public ICommand ReapplyFilterCommand { get; }            
+    public ICommand EnableAllLevelsCommand { get; }
+    public ICommand DisableAllLevelsCommand { get; }
+
+    // ---- Listener/ADS ----
+    private AdsSystemClient? _adsSystemClient;
+    private IDisposable? _eventSub;
+    private IProgress<AdsLogEntry>? _progress;
+    private CancellationTokenSource? _cts;
+
+
+    //public LogsViewModel()
+    //{
+    //    // View
+    //    LogsView = CollectionViewSource.GetDefaultView(Logs);
+    //    LogsView.Filter = LogFilter;
+
+    //    // Commands (nimm deine RelayCommand-Implementierung)
+    //    ClearCommand = new RelayCommand(Clear);
+    //    ReapplyFilterCommand = new RelayCommand(ApplyFilter);
+    //    EnableAllLevelsCommand = new RelayCommand(() => SetAllLevels(true));
+    //    DisableAllLevelsCommand = new RelayCommand(() => SetAllLevels(false));
+    //}
+
+    // ---------- Commands ----------
+    private void Clear()
+    {
+        Logs.Clear();
+    }
+
+    private void ApplyFilter()
+    {
+        LogsView.Refresh();
+    }
+
+    private void SetAllLevels(bool value)
+    {
+        ShowVerbose = ShowInfo = ShowWarning = ShowError = ShowCritical = value;
+    }
+
+    private bool LogFilter(object o)
+    {
+        if (o is not AdsLogEntry e) return false;
+        return e.LogLevel switch
+        {
+            AdsLogLevel.Verbose => ShowVerbose,
+            AdsLogLevel.Info => ShowInfo,
+            AdsLogLevel.Warning => ShowWarning,
+            AdsLogLevel.Error => ShowError,
+            AdsLogLevel.Critical => ShowCritical,
+            _ => true
+        };
+    }
+
+    // ---------- Listener ----------
+    private async Task ToggleListeningAsync(bool enable)
+    {
+        if (enable)
+            await StartListeningAsync();
+        else
+            StopListening();
+    }
+
+    private async Task StartListeningAsync()
+    {
+        if (_eventSub != null) return;
+
+        _cts = new CancellationTokenSource();
+        _adsSystemClient = new AdsSystemClient();
+
+        _progress = new Progress<AdsLogEntry>(entry =>
+        {
+            // UI-Thread:
+            App.Current.Dispatcher.Invoke(() => Logs.Add(entry));
+        });
+
+        try
+        {
+            await _adsSystemClient.Connect(Target?.NetId).ConfigureAwait(false);
+
+            _eventSub = _adsSystemClient.RegisterEventListener(_progress);
+        }
+        catch
+        {
+            StopListening();
+            IsListening = false;
+            throw;
+        }
+    }
+
+    private void StopListening()
+    {
+        try
+        {
+            _eventSub?.Dispose();
+            _eventSub = null;
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
+        }
+        finally
+        {
+            _adsSystemClient = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        StopListening();
     }
 
 }
